@@ -2,7 +2,7 @@
 
 ## A desktop app, without a development server
 
-Open **LearnHarness Local.app** from Finder, or drag it from the DMG to Applications. It starts its internal server automatically and opens a native Electron window. No Terminal command, development server or browser tab is needed for normal learning. The CLI subscriptions still require installed Codex/Claude Code and an account login. Building the app is documented in [local-desktop.md](local-desktop.md).
+Open **T3Learn.app** from Finder, or drag it from the DMG to Applications. It starts its internal server automatically and opens a native Electron window. No Terminal command, development server or browser tab is needed for normal learning. The CLI subscriptions still require installed Codex/Claude Code and an account login. Building the app is documented in [local-desktop.md](local-desktop.md).
 
 ## Progress
 

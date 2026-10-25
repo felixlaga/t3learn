@@ -11,7 +11,7 @@ npm ci
 npm run desktop:local
 ```
 
-On Apple Silicon, open `dist/local/mac-arm64/LearnHarness Local.app`. On Intel, open `dist/local/mac/LearnHarness Local.app`. To also produce a drag-and-drop installer:
+On Apple Silicon, open `dist/local/mac-arm64/T3Learn.app`. On Intel, open `dist/local/mac/T3Learn.app`. To also produce a drag-and-drop installer:
 
 ```sh
 npm run desktop:local -- --dmg
@@ -19,7 +19,7 @@ npm run desktop:local -- --dmg
 
 The command builds Next's standalone server, runs payload smoke checks, and packages the Electron app for the current Mac's architecture. It uses the existing flat icon, requires no original-author signing certificate, Apple team, notary profile, or full Xcode 26 installation, and publishes nothing. The result is a local unsigned/unnotarized build, not a distributable signed release. If macOS blocks your own build, use System Settings → Privacy & Security → Open Anyway.
 
-The app is named **LearnHarness Local** and stores its data in `~/Library/Application Support/LearnHarness Local/`. It does not consume the upstream automatic-update feed. Rebuild this checkout to update it. The original `desktop:dist` release command is unchanged.
+The app is named **T3Learn** and retains its original data location at `~/Library/Application Support/LearnHarness Local/`. It does not consume the upstream automatic-update feed. Rebuild this checkout to update it. The original `desktop:dist` release command is unchanged.
 
 ## Connect your subscriptions
 
@@ -30,7 +30,7 @@ codex login
 claude auth login
 ```
 
-In LearnHarness Local:
+In T3Learn:
 
 1. Open **Settings → Providers**.
 2. Under **Use your CLI subscriptions**, click **Use existing login** for the CLI you want. **Sign in** can also start its browser login; follow **Continue in browser** if shown.

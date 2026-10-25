@@ -41,7 +41,8 @@ const path = require("node:path");
 // renderer owns the number; this is the IPC widen target).
 const SIDEBAR_AUTOCLOSE = 928;
 
-const PRODUCT_NAME = require("../package.json").lhLocalBuild === true ? "LearnHarness Local" : "LearnHarness";
+const IS_LOCAL_BUILD = require("../package.json").lhLocalBuild === true;
+const PRODUCT_NAME = IS_LOCAL_BUILD ? "T3Learn" : "LearnHarness";
 
 // APP NAME → userData (owner, 2026-10-10): the Application Support dir is
 // exactly "LearnHarness" in dev AND packaged. Packaged Electron would
@@ -50,6 +51,9 @@ const PRODUCT_NAME = require("../package.json").lhLocalBuild === true ? "LearnHa
 // Must run before the LH_DEV_URL suffix below — dev becomes
 // "LearnHarness-dev".
 app.setName(PRODUCT_NAME);
+// Keep the original local edition's storage and single-instance identity
+// when changing its display name, so existing lessons and logins stay available.
+if (IS_LOCAL_BUILD) app.setPath("userData", path.join(app.getPath("appData"), "LearnHarness Local"));
 const AUTH_FILE = () => path.join(app.getPath("userData"), "auth.json");
 const DATA_DIR = () => path.join(app.getPath("userData"), "data");
 

@@ -2,9 +2,9 @@
 module.exports = {
 	extends: "./electron-builder.yml",
 	appId: "local.learnharness.cli",
-	productName: "LearnHarness Local",
+	productName: "T3Learn",
 	directories: { output: "dist/local" },
-	extraMetadata: { name: "learnharness-local", productName: "LearnHarness Local", lhLocalBuild: true },
+	extraMetadata: { name: "learnharness-local", productName: "T3Learn", lhLocalBuild: true },
 	publish: null,
 	mac: { icon: "build/icon.icns", identity: null, notarize: false },
 };

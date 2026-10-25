@@ -16,4 +16,4 @@ run(process.execPath, ["scripts/smoke-provider-runtime.mjs"]);
 run(process.execPath, ["scripts/build-server.mjs"]);
 run(process.execPath, ["scripts/smoke-server.mjs"]);
 run("npx", ["--no-install", "electron-builder", "--config", "electron-builder.local.cjs", "--mac", ...(process.argv.includes("--dmg") ? ["dmg"] : []), `--${process.arch}`, ...(process.argv.includes("--dmg") ? [] : ["--dir"]), "--publish", "never"]);
-console.log("Local desktop build ready in dist/local. Open LearnHarness Local.app.");
+console.log("Local desktop build ready in dist/local. Open T3Learn.app.");
