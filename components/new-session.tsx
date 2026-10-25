@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import { Conversation, ConversationContent, ConversationEmptyState } from "@/components/ai-elements/conversation";
+import { ComposerSurface } from "@/components/composer-surface";
 import { Composer } from "@/components/composer";
 import { DictationBar, joinDictation, useDictation } from "@/components/dictation";
 import { useFieldCycle } from "@/components/field-cycle";
@@ -172,6 +173,7 @@ export function DraftShell({
 						<Conversation className="h-full min-w-0 flex-1" initial="instant">
 							<ConversationContent className="min-h-full gap-0 p-0">
 								<ConversationEmptyState
+									className="font-sans [&_h3]:text-2xl [&_h3]:font-semibold [&_h3]:tracking-tight [&_p]:mt-2 [&_p]:max-w-md [&_p]:text-base"
 									title={mode === "practice" ? "New practice session" : "New session"}
 									description={
 										mode === "practice"
@@ -190,7 +192,7 @@ export function DraftShell({
 									)}
 									setup={setupCta}
 								/>
-								<div className="pointer-events-auto overflow-hidden rounded-2xl border bg-card shadow-lg">
+								<ComposerSurface className="overflow-hidden">
 									<Composer
 										busy={busy}
 										value={text}
@@ -207,7 +209,7 @@ export function DraftShell({
 										// flight.
 										placeholder={mode === "practice" ? "What do you want to practice?" : "What do you want to learn?"}
 									/>
-								</div>
+								</ComposerSurface>
 								<StatsBar
 									dictationSlot={<DictationBar dictation={dictation} />}
 									turns={[]}

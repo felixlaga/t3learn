@@ -1,3 +1,6 @@
+import { CLI_PROVIDERS, isCliProvider } from "../core/contracts/cli-providers.ts";
+import { cliModels, cliModel, cliConnected } from "../agent/cli-providers.ts";
+import { refreshCliCatalog } from "./cli-providers.ts";
 /**
  * The model catalog's server surface (model-control wave, 2026-09-12;
  * federated since the model-slots wave, 2026-09-20): pi-ai's catalog for
@@ -26,14 +29,15 @@ import { nativeSubscriptionId, nativeSubscriptionConnected, nativeSubscriptionMo
 
 export async function refreshConnectionCatalog(provider?: string): Promise<void> {
 	await Promise.all([
+		refreshCliCatalog(provider),
 		!provider || provider === "chatgpt" ? refreshChatGPTModels(piModels().getModels("openai").filter((m): m is Model<"openai-responses"> => m.api === "openai-responses")) : Promise.resolve(),
 		!provider || nativeSubscriptionId(provider) ? refreshSubscriptionModels() : Promise.resolve(),
 	]);
 }
 function connectionModel(provider: string, id: string): Model<Api> | undefined {
-	return provider === "chatgpt" ? chatGPTModel(id) : nativeSubscriptionId(provider) ? nativeSubscriptionModel(provider, id) : piModels().getModel(provider, id);
+	return isCliProvider(provider) ? cliModel(provider, id) : provider === "chatgpt" ? chatGPTModel(id) : nativeSubscriptionId(provider) ? nativeSubscriptionModel(provider, id) : piModels().getModel(provider, id);
 }
-function connectionProviderIds(): string[] { return [...piModels().getProviders().map((p) => p.id), "chatgpt", ...NATIVE_SUBSCRIPTIONS.map((p) => p.logicalId)]; }
+function connectionProviderIds(): string[] { return [...piModels().getProviders().map((p) => p.id), "chatgpt", ...NATIVE_SUBSCRIPTIONS.map((p) => p.logicalId), ...CLI_PROVIDERS.map((p) => p.id)]; }
 import { settingsStore } from "../store/settings.ts";
 import { effectiveSettings } from "./stores.ts";
 import { keyValue } from "./keys.ts";
@@ -140,6 +144,7 @@ export function catalogProviders(): CatalogProvider[] {
 		envVar: p.envVar,
 		keyPresent: keyValue(p.envVar) !== undefined,
 	})).concat([
+		...CLI_PROVIDERS.map((p) => ({ id: p.id, envVar: "", keyPresent: cliConnected(p.id) })),
 		{ id: "chatgpt", envVar: "", keyPresent: chatGPTConnected() },
 		...NATIVE_SUBSCRIPTIONS.map((p) => ({ id: p.logicalId, envVar: "", keyPresent: nativeSubscriptionConnected(p.providerId) })),
 	]).sort((a, b) => a.id.localeCompare(b.id));
@@ -188,7 +193,7 @@ export function catalogContextLimits(): Map<string, number> {
 			index.set(`${provider.id}:${model.id}`, model.contextWindow);
 		}
 	}
-	for (const model of [...chatGPTModels(), ...nativeSubscriptionModels()]) index.set(`${model.provider}:${model.id}`, model.contextWindow);
+	for (const model of [...chatGPTModels(), ...nativeSubscriptionModels(), ...cliModels()]) if (model.contextWindow > 0) index.set(`${model.provider}:${model.id}`, model.contextWindow);
 	return index;
 }
 
@@ -204,7 +209,7 @@ export function modelCatalog(): ModelCatalogResponse {
 		.flatMap((p) => piModels().getModels(p.id))
 		.map(toModelDto)
 		.sort((a, b) => (a.provider === b.provider ? a.id.localeCompare(b.id) : a.provider.localeCompare(b.provider)))
-		.concat([...chatGPTModels(), ...nativeSubscriptionModels()].map(toModelDto));
+		.concat([...chatGPTModels(), ...nativeSubscriptionModels(), ...cliModels()].map(toModelDto));
 	return {
 		models,
 		defaults: catalogDefaults(),

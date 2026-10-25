@@ -1,3 +1,4 @@
+import { CLI_PROVIDERS } from "./contracts/cli-providers.ts";
 /** Client-safe accounting folds. Rates and calculation live on the server,
  * using Pi's catalog and calculateCost; no copied pricing table lives here. */
 import type { CallUsage, ChatRecord, JobRecord, TurnUsage } from "./contracts.ts";
@@ -18,6 +19,8 @@ export function isChatGPTPlan(model: string | undefined): boolean {
 }
 export function subscriptionLabel(model: string | undefined): string | undefined {
 	if (isChatGPTPlan(model)) return "ChatGPT";
+	const cli = CLI_PROVIDERS.find((p) => model?.startsWith(`${p.id}:`));
+	if (cli) return cli.label;
 	return NATIVE_SUBSCRIPTIONS.find((p) => model?.startsWith(`${p.logicalId}:`))?.label;
 }
 export function isSubscriptionModel(model: string | undefined): boolean { return subscriptionLabel(model) !== undefined; }

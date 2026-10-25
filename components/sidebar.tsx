@@ -5,6 +5,7 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { MenuShell } from "@/components/menu-shell";
 import { DeleteSessionDialog } from "@/components/delete-session-dialog";
+import { ProgressButton } from "@/components/progress-dialog";
 import type { ChatDeleteMode } from "@/src/core";
 import { DumbbellIcon, PanelLeftCloseIcon, PanelLeftOpenIcon, PlusIcon, SearchIcon, SettingsIcon } from "lucide-react";
 import { ActivitySection } from "@/components/activity-dock";
@@ -838,7 +839,8 @@ function SessionsSidebar() {
 					{/* Settings entry (settings-app wave): same row language as
 					    New session — quiet, bottom-pinned, opens the centered
 					    dialog (also mod+, in the keyboard registry). */}
-					<div className="px-3 pb-3 pt-1">
+					<div className="flex flex-wrap gap-1 px-3 pb-3 pt-1">
+						<ProgressButton />
 						<Hint label="Settings" action="open-settings" side="right">
 							<button
 								type="button"

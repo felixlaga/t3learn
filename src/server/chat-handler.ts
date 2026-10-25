@@ -140,7 +140,7 @@ function resolveEngine(role: ModelRole): PiEngine | undefined {
 	return spec ? piEngineForSpec(spec) : undefined;
 }
 
-setJobRespawn((jobId) => void jobRunner.runJob(jobId));
+setJobRespawn((jobId) => void refreshConnectionCatalog().then(() => jobRunner.runJob(jobId)).catch(() => undefined));
 
 /** The route-facing entry: parse {chatId, input} and run one turn. */
 export async function handleChatRequest(
@@ -207,8 +207,9 @@ export async function handleChatInput(
 	// persist (nothing durable changes); wake-pipeline turns ride the same
 	// path. The affected tier is strong — the conversation chain's own tier
 	// (a chat.model override still resolves through it).
+	// Load every enabled CLI before resolving any conversation or background role.
+	await refreshConnectionCatalog();
 	if (isSubscriptionProvider(conversation.provider)) {
-		await refreshConnectionCatalog(conversation.provider);
 		if (input.type === "steers" && !connectionBackgroundAllowed(conversation.provider)) {
 			return Response.json({ error: "Background use is off for this connection. Automatic follow-up remains deferred in its queue." }, { status: 403 });
 		}

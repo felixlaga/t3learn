@@ -1,3 +1,6 @@
+import { isCliProvider } from "../core/contracts/cli-providers.ts";
+import { cliModel } from "./cli-providers.ts";
+import { cliStream } from "./cli-stream.ts";
 import {
 	clampThinkingLevel,
 	createModels,
@@ -101,7 +104,7 @@ function defaultThinkingLevel(model: Model<Api>): ThinkingLevel {
 export function piEngineForSpec(spec: ResolvedModelSpec, background: boolean | (() => boolean) = true, lifecycle?: ChatGPTDispatchLifecycle): PiEngine {
 	const models: Models = piModels();
 	const nativeId = nativeSubscriptionId(spec.provider);
-	const model = spec.provider === "chatgpt" ? chatGPTModel(spec.id) : nativeId ? nativeSubscriptionModel(spec.provider, spec.id) : models.getModel(spec.provider, spec.id);
+	const model = isCliProvider(spec.provider) ? cliModel(spec.provider, spec.id) : spec.provider === "chatgpt" ? chatGPTModel(spec.id) : nativeId ? nativeSubscriptionModel(spec.provider, spec.id) : models.getModel(spec.provider, spec.id);
 	if (!model) {
 		throw new Error(`${spec.provider} catalog has no model ${spec.id}`);
 	}
@@ -119,7 +122,7 @@ export function piEngineForSpec(spec: ResolvedModelSpec, background: boolean | (
 		// the pin honest even when config or settings drift off the map.
 		streamFn: (requestModel, context, options) => {
 			const purpose = typeof background === "function" ? background : () => background;
-			const stream = spec.provider === "chatgpt" ? chatGPTStream(purpose, lifecycle) : nativeId ? nativeSubscriptionStream(models.getProvider(nativeId)!, purpose, lifecycle) : models.streamSimple.bind(models);
+			const stream = isCliProvider(spec.provider) ? cliStream(spec.provider, purpose, lifecycle) : spec.provider === "chatgpt" ? chatGPTStream(purpose, lifecycle) : nativeId ? nativeSubscriptionStream(models.getProvider(nativeId)!, purpose, lifecycle) : models.streamSimple.bind(models);
 			return stream(requestModel, context, { ...options, reasoning: level === "off" ? undefined : level });
 		},
 	};

@@ -22,6 +22,7 @@ import { Separator } from "@/components/ui/separator";
 import { AnsweredCard } from "@/components/answered-card";
 import { artifactRenderers } from "@/components/artifacts";
 import { SubagentSteerCard } from "@/components/artifacts/steer-card";
+import { ComposerSurface } from "@/components/composer-surface";
 import { Composer } from "@/components/composer";
 import { useEnterSubmits } from "@/components/enter-submits";
 import { blurAfterPointerClick } from "@/components/focus-hygiene";
@@ -88,7 +89,7 @@ import { useSettingsSaved } from "@/components/settings-signal";
  * deliberately narrower (~46rem centered) per the reference. Same ELEMENT,
  * same place — width polish only.
  */
-const COLUMN = "mx-auto w-full max-w-none px-6";
+const COLUMN = "mx-auto w-full max-w-[52rem] px-5 sm:px-8";
 const DOCK = "mx-auto w-full max-w-[46rem] px-4";
 // The DOCK container's fixed width (46rem) and the plan marginalia's
 // geometry (owner, plan-placement round): the bare diagram sits in the
@@ -1238,7 +1239,7 @@ export function Chat({
 								spellCheck={false}
 								aria-label="Session title"
 								title="Rename this session"
-								className="lh-no-drag min-w-[8ch] max-w-[70%] shrink-0 bg-transparent font-title text-3xl tracking-tight caret-current outline-none [field-sizing:content]"
+								className="lh-no-drag min-w-[8ch] max-w-[70%] shrink-0 bg-transparent font-sans text-lg font-semibold tracking-tight caret-current outline-none [field-sizing:content]"
 							/>
 							{/* flex-1 spacer during rename too, so the chips stay at
 							    the right edge; clicks here commit via the header
@@ -1259,7 +1260,7 @@ export function Chat({
 								setTitleDraft(titleText);
 								setRenaming(true);
 							}}
-							className="lh-no-drag -mx-1.5 min-w-4 shrink cursor-text truncate rounded-md px-1.5 text-left font-title text-3xl tracking-tight transition-colors hover:bg-accent"
+							className="lh-no-drag -mx-1.5 min-w-4 shrink cursor-text truncate rounded-md px-1.5 text-left font-sans text-lg font-semibold tracking-tight transition-colors hover:bg-accent"
 						>
 							{titleText}
 							</button>
@@ -1318,7 +1319,7 @@ export function Chat({
 				<Conversation className="h-full min-w-0 flex-1" initial="instant" contextRef={scrollContextRef}>
 					<SessionMessageNavigation />
 					<ConversationContent className="min-h-full gap-0 p-0">
-						<div data-session-find-root="" className={`${COLUMN} flex flex-1 flex-col gap-4 pt-4`}>
+						<div data-session-find-root="" className={`${COLUMN} flex flex-1 flex-col gap-7 pt-8`}>
 							{messages.length === 0 && !busy && (
 								<ConversationEmptyState
 									title="New session"
@@ -2293,7 +2294,7 @@ function DockOverlay({
 							claim={revealPending}
 						/>
 					)}
-					<div ref={shellRef} className="pointer-events-auto overflow-hidden rounded-2xl border bg-card shadow-lg">
+					<ComposerSurface ref={shellRef} className="overflow-hidden">
 						<div
 						ref={contentRef}
 						key={mode}
@@ -2330,7 +2331,7 @@ function DockOverlay({
 								composer
 							)}
 						</div>
-					</div>
+					</ComposerSurface>
 					{/* The stats row: beneath the composer/question shell, not
 					    flush to the screen bottom — static height, outside the
 					    morphing shell so it never joins a height animation. */}

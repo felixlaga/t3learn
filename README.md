@@ -21,6 +21,16 @@ Instead of just giving you an explanation, it uses your answers and thinking to 
 
 ![LearnHarness teaching session](docs/assets/teaching-session.png)
 
+## T3Learn local desktop edition
+
+This is an independent edition of [LearnHarness](https://github.com/amosblomqvist/learnharness), with [T3 Code](https://github.com/pingdotgg/t3code)-inspired provider and chat UI adaptations. Original attribution and AGPL licensing are preserved.
+
+This checkout adds **Codex CLI** and **Claude Code** subscription connections alongside all existing API-key providers, plus a T3 Code-inspired chat layout. In Settings → Providers, choose **Use existing login** or **Sign in**, then select the CLI provider in your model settings.
+
+Build your own macOS app with `npm ci` followed by `npm run desktop:local`. The app is written to `dist/local/mac-arm64/LearnHarness Local.app` on Apple Silicon (`mac` on Intel). See [CLI setup and local macOS builds](docs/local-desktop.md) for details.
+
+The **Progress** button beside Settings shows XP, levels, streaks, badges and knowledge-map counts without changing the learning system. See [learning data and private backups](docs/learning-data.md). Personal records and credentials do not belong in this public source repository.
+
 ## How it works
 
 1. **Measure.** Before teaching, the agent finds where your understanding ends on each part the lesson depends on. Your answers, confidence, and thinking show it where to start.

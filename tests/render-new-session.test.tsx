@@ -71,7 +71,7 @@ describe("DraftShell — the sessionless surface", () => {
 		// The pointer-events pattern (953b22b): the wrapper stays inert…
 		assert.ok(html.includes("pointer-events-none"));
 		// …and the blob re-enables it.
-		assert.ok(/rounded-2xl[^>]*pointer-events-auto|pointer-events-auto[^>]*rounded-2xl/.test(html));
+		assert.ok(/rounded-3xl[^>]*pointer-events-auto|pointer-events-auto[^>]*rounded-3xl/.test(html));
 	});
 
 	it("renders the setup CTA above the composer blob when passed (fix wave chunk B: /chat/new mirrors home)", () => {
@@ -94,7 +94,7 @@ describe("DraftShell — the sessionless surface", () => {
 		assert.doesNotMatch(html, /chats start after/);
 		// Above the composer: the CTA's markup precedes the blob's.
 		const cta = html.indexOf('data-testid="setup-cta"');
-		const blob = html.search(/rounded-2xl[^>]*pointer-events-auto|pointer-events-auto[^>]*rounded-2xl/);
+		const blob = html.search(/rounded-3xl[^>]*pointer-events-auto|pointer-events-auto[^>]*rounded-3xl/);
 		assert.ok(cta !== -1 && blob !== -1 && cta < blob, "CTA above the blob");
 	});
 

@@ -1,6 +1,6 @@
 "use client";
 
-import { ArrowRightIcon, CornerDownLeftIcon, SquareIcon } from "lucide-react";
+import { ArrowRightIcon, ArrowUpIcon, SquareIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Hint } from "@/components/ui/hint";
 
@@ -84,7 +84,7 @@ export function Composer({
 	return (
 		<form
 			data-testid="composer"
-			className="flex items-end gap-1.5 p-1.5"
+			className="flex items-end gap-3 p-3"
 			onSubmit={(e) => {
 				e.preventDefault();
 				act();
@@ -92,6 +92,7 @@ export function Composer({
 		>
 			<textarea
 				ref={inputRef}
+				aria-label="Message"
 				value={value}
 				onChange={(e) => onChange(e.target.value)}
 				onKeyDown={(e) => {
@@ -108,7 +109,7 @@ export function Composer({
 					// Chat convention: Enter sends, Shift+Enter is a newline.
 					// ⌘/Ctrl+Enter also sends — the universal submit shortcut
 					// across every input in the app (thinking field, answers).
-					if (e.key === "Enter" && (e.metaKey || e.ctrlKey || !e.shiftKey)) {
+					if (e.key === "Enter" && !e.nativeEvent.isComposing && (e.metaKey || e.ctrlKey || !e.shiftKey)) {
 						e.preventDefault();
 						act();
 					}
@@ -116,7 +117,7 @@ export function Composer({
 				placeholder={placeholder}
 				autoFocus={autoFocus}
 				rows={1}
-				className="field-sizing-content lh-input max-h-48 min-h-10 flex-1 resize-none bg-transparent px-2.5 py-2 outline-none placeholder:text-muted-foreground"
+				className="field-sizing-content lh-input max-h-48 min-h-16 flex-1 resize-none bg-transparent px-2.5 py-2 outline-none placeholder:text-muted-foreground"
 			/>
 			{/* The button follows the text (owner report 2026-10-03): while
 				 a turn runs WITH text typed it stays the SEND affordance
@@ -154,7 +155,7 @@ export function Composer({
 								: "bg-primary text-primary-foreground hover:opacity-90 disabled:opacity-40",
 						)}
 					>
-						{busy && !canSend ? <SquareIcon className="size-4" /> : <CornerDownLeftIcon className="size-5" />}
+						{busy && !canSend ? <SquareIcon className="size-4" /> : <ArrowUpIcon className="size-5" />}
 					</button>
 				)}
 		</form>

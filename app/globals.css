@@ -598,3 +598,16 @@ body {
 	outline: 1px solid var(--border);
 	border-radius: 0.25rem;
 }
+
+/* Chat surfaces adapted from T3 Code: quieter edges and a readable column.
+   User appearance overrides still win through their inline custom properties. */
+:root, .dark {
+  --border: #303034;
+  --input: #353539;
+  --lh-prose-leading: 1.65;
+}
+[data-slot="composer-shell"] button:focus-visible,
+[data-testid="cli-connections"] :is(button, a, input, summary):focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 3px;
+}

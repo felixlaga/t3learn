@@ -84,6 +84,8 @@ files:
   # Main-process ID-token signature verification (no bundled OAuth implementation).
   - node_modules/jose/**/*
 extraResources:
+  - from: docs/t3-code-attribution.md
+    to: licenses/t3-code.md
   # Attribution/license for the bounded local Pi cutoff-selector port.
   - from: docs/compaction-accounting.md
     to: licenses/pi-compaction.md
