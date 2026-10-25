@@ -1,5 +1,7 @@
 "use client";
 
+import { AttachmentCards, useAttachments } from "./attachments";
+import type { AttachmentRef } from "@/src/core";
 import { createContext, Fragment, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useChatSession } from "@/components/session";
 import { visibleQueuedSteers } from "@/components/session-core";
@@ -200,6 +202,8 @@ export function Chat({
 	title,
 	initialMessages,
 	initialPrompt,
+	initialAttachments = [],
+	initialAttachmentError,
 	initiallyInFlight,
 	initiallyCompacting = false,
 	initialConfigured = false,
@@ -213,6 +217,8 @@ export function Chat({
 	 *  tag rides the header instead. */
 	kind?: "teach" | "practice";
 	initialPrompt?: string;
+	initialAttachments?: AttachmentRef[];
+	initialAttachmentError?: string;
 	/** A teacher turn is running server-side but attached to no client
 	 * (navigated away mid-turn, returned while in flight). */
 	initiallyInFlight?: boolean;
@@ -251,11 +257,11 @@ export function Chat({
 	// (initialPromptOwed — the pure gate, pinned in the test suite).
 	const sentInitial = useRef(false);
 	useEffect(() => {
-		if (!sentInitial.current && initialPromptOwed(initialMessages, initialPrompt)) {
+		if (!initialAttachmentError && !sentInitial.current && initialPromptOwed(initialMessages, initialPrompt)) {
 			sentInitial.current = true;
-			void send({ type: "text", text: initialPrompt! });
+			void send({ type: "text", text: initialPrompt!, ...(initialAttachments.length ? { attachments: initialAttachments } : {}) });
 		}
-	}, [initialPrompt, initialMessages, send]);
+	}, [initialPrompt, initialMessages, send, initialAttachments, initialAttachmentError]);
 
 	// A turn running server-side, attached to no live view of ours (navigate
 	// away mid-turn, or a wake turn discovered mid-session): the reattach
@@ -489,10 +495,10 @@ export function Chat({
 	// the dock stays mounted (the problem is still active until the agent
 	// concludes).
 	const submitThinking = useCallback(
-		(text: string) => {
+		(text: string, attachments?: AttachmentRef[]) => {
 			const problem = activeProblemRef.current;
 			if (!problem) return;
-			void send({ type: "thinking", problemCallId: problem.toolCallId, text });
+			void send({ type: "thinking", problemCallId: problem.toolCallId, text, attachments });
 		},
 		[send],
 	);
@@ -543,12 +549,14 @@ export function Chat({
 	// session's current phase.
 	const phases = useMemo(() => phaseTimeline(messages), [messages]);
 
-	const [text, setText] = useState("");
+	const attachments = useAttachments();
+	const [attachmentError, setAttachmentError] = useState(initialAttachmentError);
+	const [text, setText] = useState(initialAttachmentError ? initialPrompt ?? "" : "");
 	/* The composer's value MIRROR ("nothing gets lost" round, owner
 	 * 2026-10-01): a dictation flush lands via setState, which a closure
 	 * waiting through `await finish()` cannot observe in time. Kept
 	 * current at every write site via applyText. */
-	const textRef = useRef("");
+	const textRef = useRef(initialAttachmentError ? initialPrompt ?? "" : "");
 	const applyText = useCallback((v: string) => {
 		textRef.current = v;
 		setText(v);
@@ -578,6 +586,7 @@ export function Chat({
 	 *  Auto-continuations (probe answers) never set it — their refusal
 	 *  opens the dialog with no replay. */
 	const draftRef = useRef<string | null>(null);
+	const draftAttachmentsRef = useRef<AttachmentRef[]>([]);
 
 	// THE BYOK REFUSAL (owner, 2026-09-22): a send that lands the server's
 	// 503 models_not_configured envelope renders as the SETUP FLOW, never
@@ -610,6 +619,7 @@ export function Chat({
 			if (cancelled) return;
 			if (draftRef.current !== null) {
 				applyText(draftRef.current);
+				attachments.update(draftAttachmentsRef.current);
 				draftRef.current = null;
 			}
 			clearError();
@@ -1143,10 +1153,13 @@ export function Chat({
 	const doSend = () => {
 		if (busy || pending || compacting) return;
 		const t = textRef.current.trim();
-		if (!t) return;
+		if (!t || attachments.uploading || attachments.pdf) return;
+		setAttachmentError(undefined);
+		draftAttachmentsRef.current = attachments.itemsRef.current;
 		draftRef.current = t; // the refusal flow's preserve-and-replay seam
 		applyText("");
-		void send({ type: "text", text: t });
+		void send({ type: "text", text: t, ...(attachments.itemsRef.current.length ? { attachments: attachments.itemsRef.current } : {}) });
+		attachments.clear();
 	};
 
 	/* STEER VS SEND (owner arc 2026-10-03): a send while a turn runs steers
@@ -1159,7 +1172,7 @@ export function Chat({
 	 * time the send's POST resolved, so the steer lands. Idle takes the
 	 * plain send; a raced settle 409s and falls back to exactly that. */
 	const doSteerOrSend = () => {
-		if (pending || compacting) return;
+		if (pending || compacting || attachments.uploading || attachments.pdf || (busy && attachments.items.length)) return;
 		const t = textRef.current.trim();
 		if (!t) return;
 		if (busy) {
@@ -1362,6 +1375,8 @@ export function Chat({
 												return <CompactionMomentDivider key={pi} data={part.data as CompactionDividerData} />;
 											case "data-compaction-cut":
 												return <CompactionCutDivider key={pi} data={part.data as CompactionDividerData} />;
+											case "data-session-attachments":
+												return <AttachmentCards key={pi} attachments={(part.data as { attachments: AttachmentRef[] }).attachments} />;
 											case "data-practice-thinking":
 												return <ThinkingCard key={pi} data={part.data as PracticeThinkingData} />;
 											case "data-practice-next":
@@ -1633,7 +1648,8 @@ export function Chat({
 						)
 					}
 					composer={
-						<Composer
+						<div>{attachmentError && <p role="alert" className="p-3 text-sm text-destructive">{attachmentError}</p>}<Composer
+							attachments={attachments}
 							// Stop aborts ANY in-flight turn (stream-reattach wave): the
 							// square renders while a reattached/wake turn runs too — the
 							// abort channel kills it server-side; stop() alone would
@@ -1644,7 +1660,7 @@ export function Chat({
 							inputRef={composerInputRef}
 							onSend={onSend}
 							onStop={abortInFlightTurn}
-							canSend={canSend}
+							canSend={canSend && !attachments.uploading && !attachments.pdf && !(busy && attachments.items.length > 0)}
 							onEscape={dictation.active ? dictation.cancel : undefined}
 							// The pause affordance (owner round 16): the placeholder
 							// IS the hint — empty state, exactly where Enter-on-empty
@@ -1652,7 +1668,7 @@ export function Chat({
 							nextProblem={nextReady}
 							onNext={sendNext}
 							placeholder={nextReady ? "Ask anything, or press Enter for the next one." : undefined}
-						/>
+						/></div>
 					}
 					onSubmitAnswer={(output) => {
 						if (!pending) return;
@@ -1852,7 +1868,7 @@ function DockOverlay({
 	 *  question (the composer is replaced); null in teaching sessions. */
 	practice: { toolCallId: string; input: unknown } | null;
 	/** (commit, text) — the practice dock's two submit lanes. */
-	onSubmitThinking: (text: string) => void;
+	onSubmitThinking: (text: string, attachments?: AttachmentRef[]) => void;
 	/** Teach-phase pending question: arrives collapsed behind the reveal button (W5). */
 	requiresReveal: boolean;
 	/** The reading-thinking draft (owner 2026-10-03) — owned by ChatView so

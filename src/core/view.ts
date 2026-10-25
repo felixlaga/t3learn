@@ -395,6 +395,10 @@ function projectMarker(marker: LhMarkerMessage, out: LhViewMessage[]): void {
 			});
 			return;
 		}
+		case "session-attachments": {
+			out.push({ id: marker.id, role: "user", parts: [{ type: "data-session-attachments", data: marker.details }] });
+			return;
+		}
 		case "practice-thinking": {
 			// The learner's working trace / committed answer (practice
 			// sessions): a user-side card keyed on the structured details

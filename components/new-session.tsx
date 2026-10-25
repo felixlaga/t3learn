@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
+import { useAttachments, type AttachmentDraft } from "./attachments";
 import { useRouter } from "next/navigation";
 import { Conversation, ConversationContent, ConversationEmptyState } from "@/components/ai-elements/conversation";
 import { ComposerSurface } from "@/components/composer-surface";
@@ -46,6 +47,7 @@ export async function startDraftSession(
 	fetchLike: typeof fetch,
 	mode?: "practice",
 	picks?: readonly DraftPick[],
+	attachmentIds?: string[],
 ): Promise<string | null> {
 	const t = text.trim();
 	if (!t) return null;
@@ -65,7 +67,7 @@ export async function startDraftSession(
 	const { id } = (await res.json()) as { id: string };
 	// No settings PUT on create (per-session models, owner 2026-09-28):
 	// the SERVER stamps the newborn from the strong slot.
-	return `/chat/${id}?prompt=${encodeURIComponent(t)}`;
+	return `/chat/${id}?prompt=${encodeURIComponent(t)}${attachmentIds?.length ? `&attachments=${attachmentIds.join(",")}` : ""}`;
 }
 
 /** The pure shell (no router) — the render-test seam: the draft view's
@@ -74,6 +76,7 @@ export async function startDraftSession(
  * dictation instance); the truth of the text stays in the parent, whose
  * send reads a REF mirror — see NewSession below. */
 export function DraftShell({
+	attachments,
 	busy,
 	text,
 	onChange,
@@ -86,6 +89,7 @@ export function DraftShell({
 	overlay,
 }: {
 	busy: boolean;
+	attachments?: AttachmentDraft;
 	text: string;
 	onChange: (v: string) => void;
 	onSend: () => void;
@@ -127,7 +131,7 @@ export function DraftShell({
 	// round, owner 2026-10-01): the spoken text is deferred in the run's
 	// buffer — Enter must reach the finish-first send, not be gated out by
 	// an empty textarea. Nothing said → the send no-ops.
-	const canSend = text.trim().length > 0 || dictation.active;
+	const canSend = (text.trim().length > 0 || dictation.active) && !attachments?.uploading && !attachments?.pdf;
 	/* FINISH DICTATION FIRST (owner, 2026-10-01): stop the run, let the
 	 * last finals land through onChange, THEN call the parent's send —
 	 * which reads its REF mirror, so the post-await timing of React's
@@ -194,6 +198,7 @@ export function DraftShell({
 								/>
 								<ComposerSurface className="overflow-hidden">
 									<Composer
+										attachments={attachments}
 										busy={busy}
 										value={text}
 										onChange={onChange}
@@ -234,6 +239,7 @@ export function DraftShell({
 
 export function NewSession({ initialConfigured, mode = "teach" }: { initialConfigured: boolean; mode?: "teach" | "practice" }) {
 	const router = useRouter();
+	const attachments = useAttachments();
 	const [text, setText] = useState("");
 	/* The draft MIRROR ("nothing gets lost" round, 2026-10-01): the shell's
 	 * finish-first send calls THIS send after the dictation flush — which
@@ -289,7 +295,7 @@ export function NewSession({ initialConfigured, mode = "teach" }: { initialConfi
 
 	const send = useCallback(() => {
 		const draft = textRef.current.trim();
-		if (!draft || busy) return;
+		if (!draft || busy || attachments.uploading || attachments.pdf) return;
 		if (!configured) {
 			setSetupOpen(true);
 			return;
@@ -304,17 +310,18 @@ export function NewSession({ initialConfigured, mode = "teach" }: { initialConfi
 			return;
 		}
 		setBusy(true);
-		void startDraftSession(draft, fetch, mode === "practice" ? "practice" : undefined, mode === "practice" ? picksRef.current : undefined)
+		void startDraftSession(draft, fetch, mode === "practice" ? "practice" : undefined, mode === "practice" ? picksRef.current : undefined, attachments.itemsRef.current.map(a => a.id))
 			.then((target) => {
 				if (target) router.push(target);
 				else setBusy(false);
 			})
 			.catch(() => setBusy(false));
-	}, [busy, router, configured, zeroKeys, strongKeyless]);
+	}, [busy, router, configured, zeroKeys, strongKeyless, attachments]);
 
 	return (
 		<>
 			<DraftShell
+				attachments={attachments}
 				busy={busy}
 				text={text}
 				onChange={applyText}

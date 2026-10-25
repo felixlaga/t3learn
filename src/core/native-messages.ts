@@ -1,3 +1,4 @@
+import type { AttachmentRef, AttachmentContent } from "./attachments.ts";
 /**
  * THE NATIVE MESSAGE RECORD (Wave B, owner-approved 2026-09-26): chat
  * records store pi's own message shapes — the exact history the agent
@@ -66,6 +67,7 @@ export interface LhMarkerMessage {
 	id: string;
 	role: "custom";
 	customType:
+		| "session-attachments"
 		| "graph-context"
 		| "probe-handoff"
 		| "subagent-steer"
@@ -103,6 +105,12 @@ export function asAgentMessages(messages: readonly LhMessage[]): AgentMessage[] 
 /** The app-wide message id shape (same as the UIMessage-era mint). */
 export function newMessageId(): string {
 	return `msg_${Date.now().toString(36)}_${crypto.randomUUID().slice(0, 8)}`;
+}
+
+
+/** Session-only resources. Extraction ignores this marker entirely. */
+export function newAttachmentMessage(attachments: AttachmentRef[]): LhMarkerMessage {
+	return { id: newMessageId(), role: "custom", customType: "session-attachments", content: "Attached lesson context (not a memory import): " + attachments.map(a => a.name).join(", "), details: { attachments }, display: true, timestamp: Date.now() };
 }
 
 // ─── constructors (the input-event → native append mapping lives in
@@ -509,7 +517,7 @@ function resultIdsFrom(messages: readonly AgentMessage[]): Set<string> {
  * Contract (pi-agent-core): never throws — an unknown shape passes
  * through untouched rather than killing the loop.
  */
-export function toLlmMessages(messages: readonly AgentMessage[]): Message[] {
+export function toLlmMessages(messages: readonly AgentMessage[], resolveAttachments?: (ids: string[]) => AttachmentContent): Message[] {
 	// THE COMPACTION CUT (owner round 14, 2026-10-05): the ACTIVE marker
 	// (the newest — chained compactions rule last) names the first kept
 	// message; everything before it is replaced by the marker's content
@@ -562,7 +570,9 @@ export function toLlmMessages(messages: readonly AgentMessage[]): Message[] {
 			if (marker.customType === "compaction" && head !== null && marker.id === active!.id) continue;
 			out.push({
 				role: "user",
-				content: [{ type: "text", text: marker.content }],
+				content: marker.customType === "session-attachments" && resolveAttachments
+					? [{ type: "text", text: marker.content }, ...resolveAttachments((marker.details as { attachments: AttachmentRef[] }).attachments.map(a => a.id))]
+					: [{ type: "text", text: marker.content }],
 			timestamp: marker.timestamp,
 			});
 			continue;
@@ -684,7 +694,7 @@ export function nativeInputCause(message: AgentMessage, history: readonly AgentM
 	if (message.role === "custom") {
 		if (["probe-handoff", "subagent-steer", "subagent-abort"].includes(message.customType)) return "automatic";
 		if (["practice-thinking", "practice-next"].includes(message.customType)) return "learner";
-		return ["graph-context", "plan-block", "problem-dismissed", "compaction"].includes(message.customType) ? "neutral" : "unrecognizable";
+		return ["graph-context", "plan-block", "problem-dismissed", "compaction", "session-attachments"].includes(message.customType) ? "neutral" : "unrecognizable";
 	}
 	if (message.role === "toolResult") {
 		if (!(QUESTION_TOOLS as readonly string[]).includes(message.toolName) || message.isError || message.details == null || (message.details as { dismissed?: boolean }).dismissed) return "neutral";

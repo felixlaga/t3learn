@@ -47,3 +47,6 @@ export * from "./model-catalog.ts";
 export { sessionCost } from "./pricing.ts";
 
 export * from "./cli-providers.ts";
+
+export { uploadAttachment, downloadAttachment, getAttachmentRef } from "./attachments.ts";
+export { transcribeAttachment } from "./transcription.ts";

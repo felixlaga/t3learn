@@ -1,3 +1,4 @@
+import { attachmentContent, readAttachment } from "../store/attachments.ts";
 import type { Usage } from "@earendil-works/pi-ai";
 import {
 	createPracticeAgent,
@@ -164,6 +165,14 @@ export async function handleChatRequest(
 		}
 		throw err;
 	}
+	try {
+		const refs = input.type === "answer" ? input.answer.attachments : input.type === "text" || input.type === "thinking" ? input.attachments : undefined;
+		if (refs?.length) {
+			const canonical = refs.map(ref => readAttachment(ref.id).ref);
+			if (input.type === "answer") input.answer = { ...input.answer, attachments: canonical };
+			else if (input.type === "text" || input.type === "thinking") input.attachments = canonical;
+		}
+	} catch { return Response.json({ error: "Attachment unavailable. Please attach the file again." }, { status: 400 }); }
 	return handleChatInput(chatId, input, buildAgent);
 }
 
@@ -239,6 +248,10 @@ export async function handleChatInput(
 	let conversationEngine: PiEngine;
 	try { conversationEngine = piEngineForSpec(conversation, () => callPurpose.background, lifecycle); }
 	catch { return Response.json({ error: conversation.provider === "chatgpt" ? chatGPTStreamError("model catalog") : isSubscriptionProvider(conversation.provider) ? nativeSubscriptionError(conversation.provider, "model catalog") : "The selected model is unavailable." }, { status: 503 }); }
+	const incomingAttachments = input.type === "answer" ? input.answer.attachments : input.type === "text" || input.type === "thinking" ? input.attachments : undefined;
+	if ((incomingAttachments?.length || record.messages.some(m => m.role === "custom" && m.customType === "session-attachments")) && !conversationEngine.model.input.includes("image")) {
+		return Response.json({ error: "This lesson has image/PDF context. Choose an image-capable model to continue." }, { status: 400 });
+	}
 	const modelIdForCompaction = `${conversationEngine.model.provider}:${conversationEngine.model.id}`;
 	await ensureCompacted(
 		{
@@ -375,6 +388,7 @@ export async function handleChatInput(
 		restoreAutomatic: (automaticIds, retainedIds) => restoreUncommittedAutomatic(chatId, constructed, automaticIds, retainedIds),
 	});
 	const agentOpts: AgentBuildOptions = {
+		attachmentContent,
 		engine,
 		callPurpose,
 		requestCycle,

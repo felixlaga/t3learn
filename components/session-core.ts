@@ -23,6 +23,7 @@ import {
 	newProblemDismissedMarker,
 	newThinkingMessage,
 	newUserMessage,
+	newAttachmentMessage,
 	projectView,
 	type ChatInput,
 	type LhMarkerMessage,
@@ -587,6 +588,8 @@ export class SessionModel {
 			const tool = pendingCallTool([...this.base, ...this.tail], input.toolCallId) ?? "quiz";
 			optimistic.push({ ...newAnswerResult(input.toolCallId, tool, input.answer), id: localId() });
 		}
+		const attachments = input.type === "answer" ? input.answer.attachments : input.type === "text" || input.type === "thinking" ? input.attachments : undefined;
+		if (attachments?.length) optimistic.push({ ...newAttachmentMessage(attachments), id: localId() });
 		if (optimistic.length > 0) this.mutate(() => {
 			this.tail = [...this.tail, ...optimistic];
 		});

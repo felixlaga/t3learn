@@ -1,5 +1,6 @@
 "use client";
 
+import { AttachmentPicker, type AttachmentDraft } from "./attachments";
 import { ArrowRightIcon, ArrowUpIcon, SquareIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Hint } from "@/components/ui/hint";
@@ -47,9 +48,11 @@ export function Composer({
 	inputRef,
 	onEscape,
 	placeholder = "Ask, answer, or steer the lesson…",
+	attachments,
 	nextProblem = false,
 	onNext,
 }: {
+	attachments?: AttachmentDraft;
 	busy: boolean;
 	value: string;
 	onChange: (v: string) => void;
@@ -82,6 +85,8 @@ export function Composer({
 		else if (action === "next") onNext?.();
 	};
 	return (
+		<div {...attachments?.handlers}>
+		{attachments && <AttachmentPicker draft={attachments} disabled={busy} />}
 		<form
 			data-testid="composer"
 			className="flex items-end gap-3 p-3"
@@ -159,5 +164,6 @@ export function Composer({
 					</button>
 				)}
 		</form>
+		</div>
 	);
 }

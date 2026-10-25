@@ -4,6 +4,16 @@
 
 Open **T3Learn.app** from Finder, or drag it from the DMG to Applications. It starts its internal server automatically and opens a native Electron window. No Terminal command, development server or browser tab is needed for normal learning. The CLI subscriptions still require installed Codex/Claude Code and an account login. Building the app is documented in [local-desktop.md](local-desktop.md).
 
+## Lesson attachments and handwritten answers
+
+Use **Attach images or PDF** in the home, new-session or chat input. Images can also be pasted or dropped into the input. Attach up to four files per message, 10 MB each. Supported formats are PNG, JPEG, WebP and PDF. PDFs show a page selector: blank means all pages for a document of ten pages or fewer; larger documents require an explicit selection of up to ten pages. Selected PDF pages are sent as both extracted text and rendered images, including scans and diagrams. The conversation model must support images. Finish any running response before sending attachments.
+
+For an answer, use **Add handwritten thinking**, then **Convert to editable text**. The draft is inserted into Your thinking (or Your answer for free-response questions). Review and edit it before submitting. Transcription preserves visible mistakes and marks unclear content; it does not grade or solve. Existing typed text is retained. The original images accompany the submitted answer so the teacher can inspect diagrams and spatial reasoning. Transcription uses the session's selected model if image-capable, otherwise the configured Vision slot; it uses that connection's normal allowance and never submits an answer automatically.
+
+Files and their prepared model context live in `data/attachments/<id>/`, separate from the chat JSON. Chat records contain small attachment references. Original files remain available from their transcript cards when you reopen the session. Uploading or transcribing does not import documents into the knowledge graph. Normal teacher-prose extraction from the ensuing lesson continues as before. The context is sent to your selected provider when used; it is not an offline OCR feature.
+
+**The private GitHub backup excludes attachment files.** It includes the transcript references and submitted text. To preserve the original images/PDFs, separately copy the `attachments/` directory. On a restore without those files, the app reports them as unavailable instead of inventing their contents. Removing a preview removes it from the outgoing message; it does not erase local upload files. Images and PDFs can account for most of your disk usage.
+
 ## Progress
 
 The **Progress** button beside Settings opens your XP, level, milestone badges, streaks, 30-day calendar and knowledge-map statistics. Every answered learning question earns 20 XP; each 200 XP advances one level (starting at level 1). Honest “I don’t know” responses count. Skips, preference questions, failed tools and unanswered questions do not. Duplicate results cannot award XP twice.

@@ -1,3 +1,4 @@
+import { parseAttachments, type AttachmentRef } from "./attachments.ts";
 /**
  * THE INPUT-EVENTS CONTRACT (Wave B, owner ruling 2026-09-26: "input
  * events now, in the same pass"): POST /api/chat carries `{chatId, input}`
@@ -32,6 +33,7 @@ import {
 	concludedByDismissalPair,
 	danglingQuestionOf,
 	newAnswerResult,
+	newAttachmentMessage,
 	newNextMessage,
 	newProblemDismissedMarker,
 	newThinkingMessage,
@@ -42,14 +44,14 @@ import { QUESTION_TOOLS, toolQuestionKind } from "./pending.ts";
 
 /** One client-originated input event (the POST body's `input`). */
 export type ChatInput =
-	| { type: "text"; text: string }
+	| { type: "text"; text: string; attachments?: AttachmentRef[] }
 	| { type: "answer"; toolCallId: string; answer: QuestionAnswerData }
 	| { type: "continue" }
 	/** The practice dock's two buttons (owner, 2026-10-04): the learner's
 	 *  thinking on the ACTIVE problem — one lane (owner 2026-10-05):
 	 *  whether it claims an answer is read from the text. One
 	 *  problem may carry many submissions; each is its own turn. */
-	| { type: "thinking"; problemCallId: string; text: string }
+	| { type: "thinking"; problemCallId: string; text: string; attachments?: AttachmentRef[] }
 	/** The practice move-on signal (owner round 16): the learner's
 	 *  explicit go-ahead during the between-problems pause — the Next
 	 *  chip or Enter on an empty composer. Practice sessions only, and
@@ -154,12 +156,14 @@ export class ChatInputError extends Error {}
 export function parseChatInput(input: unknown): ChatInput {
 	if (typeof input !== "object" || input === null) throw new ChatInputError("input must be an object");
 	const i = input as Record<string, unknown>;
+	let attachments: AttachmentRef[];
+	try { attachments = parseAttachments(i.attachments); } catch (err) { throw new ChatInputError((err as Error).message); }
 	switch (i.type) {
 		case "text":
 			if (typeof i.text !== "string" || (i.text as string).trim().length === 0) {
 				throw new ChatInputError("text input requires non-empty text");
 			}
-			return { type: "text", text: i.text };
+			return { type: "text", text: i.text, ...(attachments.length ? { attachments } : {}) };
 		case "answer":
 			if (typeof i.toolCallId !== "string" || i.toolCallId.length === 0) {
 				throw new ChatInputError("answer input requires toolCallId");
@@ -167,6 +171,7 @@ export function parseChatInput(input: unknown): ChatInput {
 			if (typeof i.answer !== "object" || i.answer === null) {
 				throw new ChatInputError("answer input requires the graded answer object");
 			}
+			try { parseAttachments((i.answer as QuestionAnswerData).attachments); } catch (err) { throw new ChatInputError((err as Error).message); }
 			return { type: "answer", toolCallId: i.toolCallId, answer: i.answer as QuestionAnswerData };
 		case "continue":
 			return { type: "continue" };
@@ -177,7 +182,7 @@ export function parseChatInput(input: unknown): ChatInput {
 			if (typeof i.text !== "string" || i.text.trim().length === 0) {
 				throw new ChatInputError("thinking input requires non-empty text");
 			}
-			return { type: "thinking", problemCallId: i.problemCallId, text: i.text };
+			return { type: "thinking", problemCallId: i.problemCallId, text: i.text, ...(attachments.length ? { attachments } : {}) };
 		case "next":
 			return { type: "next" };
 		default:
@@ -200,13 +205,13 @@ export function inputAppends(
 ): LhMessage[] {
 	switch (input.type) {
 		case "text":
-			return [...dismissalConclusion(record), newUserMessage(input.text)];
+			return [...dismissalConclusion(record), newUserMessage(input.text), ...(input.attachments?.length ? [newAttachmentMessage(input.attachments)] : [])];
 		case "answer": {
 			const pending = danglingQuestionOf(record.messages);
 			if (!pending || pending.toolCallId !== input.toolCallId) {
 				throw new ChatInputError("answer input targets no pending question call");
 			}
-			return [newAnswerResult(input.toolCallId, pending.tool, input.answer)];
+			return [newAnswerResult(input.toolCallId, pending.tool, input.answer), ...(input.answer.attachments?.length ? [newAttachmentMessage(input.answer.attachments)] : [])];
 		}
 		case "continue":
 			return dismissalConclusion(record);
@@ -215,7 +220,7 @@ export function inputAppends(
 			if (!active || active.toolCallId !== input.problemCallId) {
 				throw new ChatInputError("thinking input targets no active problem");
 			}
-			return [...dismissalConclusion(record), newThinkingMessage(input.problemCallId, input.text)];
+			return [...dismissalConclusion(record), newThinkingMessage(input.problemCallId, input.text), ...(input.attachments?.length ? [newAttachmentMessage(input.attachments)] : [])];
 		}
 		case "next": {
 			// Honest 400s, the thinking gate's discipline: the signal is a

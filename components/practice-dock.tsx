@@ -1,5 +1,7 @@
 "use client";
 
+import { HandwritingInput, useAttachments } from "./attachments";
+import type { AttachmentRef } from "@/src/core";
 import { useCallback, useRef, useState } from "react";
 import { ChevronRightIcon } from "lucide-react";
 import { MessageResponse } from "@/components/ai-elements/message";
@@ -39,7 +41,7 @@ export interface PracticeDockProps {
 	expanded: boolean;
 	onExpand: () => void;
 	/** text — POST {type:"thinking"} (one lane; the register is read from the text). */
-	onSubmit: (text: string) => void;
+	onSubmit: (text: string, attachments?: AttachmentRef[]) => void;
 	/** Escape in the thinking field stops dictation (threaded from the page). */
 	onEscape?: () => void;
 	/** Compaction is running for this chat (owner round 14): the thinking
@@ -50,6 +52,8 @@ export interface PracticeDockProps {
 }
 
 export function PracticeDock({ problemCallId, input, expanded, onExpand, onSubmit, onEscape, compactionRunning = false }: PracticeDockProps) {
+	const handwriting = useAttachments(true);
+	const [transcribing, setTranscribing] = useState(false);
 	const [thinking, setThinking] = useState("");
 	// Ref MIRRORS the field ("nothing gets lost", the question-dock
 	// discipline): a submit resuming after `await finishDictation()` reads
@@ -69,12 +73,13 @@ export function PracticeDock({ problemCallId, input, expanded, onExpand, onSubmi
 	);
 
 	const submit = () => {
-		if (compactionRunning) return;
+		if (compactionRunning || transcribing || handwriting.uploading) return;
 		const text = thinkingRef.current.trim();
 		if (text.length === 0) return;
 		thinkingRef.current = "";
 		setThinking("");
-		onSubmit(text);
+		onSubmit(text, handwriting.items);
+		handwriting.clear();
 	};
 
 	/* ENTER SUBMITS FROM ANYWHERE (owner round 6, 2026-10-05): dictation
@@ -116,12 +121,14 @@ export function PracticeDock({ problemCallId, input, expanded, onExpand, onSubmi
 			{/* The learner's half: Enter SENDS (owner round 2, 2026-10-05);
 			    Shift+Enter makes a newline — less to decide about. */}
 			<div
+				{...handwriting.handlers}
 				data-testid="practice-thinking-field"
 				className="m-1.5 rounded-[10px] border border-border/70 bg-background/60 transition-colors focus-within:border-primary/50"
 			>
 				<div className="px-2.5 pt-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">
 					YOUR THINKING
 				</div>
+				<HandwritingInput draft={handwriting} onBusyChange={setTranscribing} onTranscribed={value => { const next = joinDictation(thinkingRef.current, value); thinkingRef.current = next; setThinking(next); }} />
 				<textarea
 					value={thinking}
 					onChange={(e) => {
@@ -161,7 +168,7 @@ export function PracticeDock({ problemCallId, input, expanded, onExpand, onSubmi
 					<Button
 						type="button"
 						data-testid="practice-send"
-						disabled={thinking.trim().length === 0 || compactionRunning}
+						disabled={thinking.trim().length === 0 || compactionRunning || transcribing || handwriting.uploading}
 						onClick={() => submit()}
 						className="ml-auto h-9 rounded-[6px] px-3.5 text-sm font-medium"
 					>

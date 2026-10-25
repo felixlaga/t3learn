@@ -1,3 +1,5 @@
+import { attachmentIds } from "@/src/core";
+import { getAttachmentRef } from "@/src/server";
 import { notFound } from "next/navigation";
 import { Chat } from "@/components/chat";
 import { slotsConfigured } from "@/src/core";
@@ -10,15 +12,18 @@ export default async function ChatPage({
 	searchParams,
 }: {
 	params: Promise<{ id: string }>;
-	searchParams: Promise<{ prompt?: string }>;
+	searchParams: Promise<{ prompt?: string; attachments?: string }>;
 }) {
-	const [{ id }, { prompt }] = await Promise.all([params, searchParams]);
+	const [{ id }, { prompt, attachments }] = await Promise.all([params, searchParams]);
 	const chat = getChat(id);
 	if (!chat) notFound();
 	// The persistent setup CTA's seed (BYOK, owner 2026-09-22): slotsConfigured
 	// over the settings record, server-read — the same gate home/new read. The
 	// server's 503 stays the truth; this only decides whether the pill rides.
 	const record = readSettingsRecord();
+	let initialAttachmentError: string | undefined;
+	let initialAttachments: import("@/src/core").AttachmentRef[] = [];
+	try { initialAttachments = attachmentIds(attachments ? attachments.split(",") : undefined).map(id => getAttachmentRef(id)); } catch { initialAttachmentError = "An attachment is unavailable on this device. Your first message was not sent. Attach the file again below."; }
 	return (
 		<Chat
 			key={chat.id}
@@ -31,6 +36,8 @@ export default async function ChatPage({
 				initialMessages={chat.messages}
 			initialConfigured={slotsConfigured(record?.models)}
 			initialPrompt={prompt}
+			initialAttachments={initialAttachments}
+			initialAttachmentError={initialAttachmentError}
 			// A teacher turn that outlived its client: the remounted view must
 			// attach (busy shimmer + poll), never resurrect the stale record.
 			initiallyInFlight={isTurnRunning(chat.id)}

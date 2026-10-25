@@ -1,5 +1,6 @@
 "use client";
 
+import { HandwritingInput, useAttachments } from "./attachments";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ArrowDownIcon, ChevronRightIcon, PlayIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -313,6 +314,8 @@ function QuestionDockForm({
 	// options, and picking an option must never clear a typed custom answer.
 	const [sel, setSel] = useState<DockSelection>(emptyDockSelection());
 	// The learner's transfer channel — thinking, never "a note".
+	const handwriting = useAttachments(true);
+	const [transcribing, setTranscribing] = useState(false);
 	const [thinking, setThinking] = useState("");
 	const [other, setOther] = useState("");
 	const [text, setText] = useState("");
@@ -365,7 +368,7 @@ function QuestionDockForm({
 			: sel.dontKnow || (sel.otherSelected && other.trim().length > 0) || sel.selected.size > 0;
 
 	const submit = () => {
-		if (!canSubmit || compactionRunning) return;
+		if (!canSubmit || compactionRunning || transcribing || handwriting.uploading) return;
 		/* FINISH DICTATION FIRST (owner, 2026-10-01): Enter may arrive while
 		 * a run is live with reasoning still in Deepgram's hands. Stop the
 		 * run, let the last finals land in the target field, and only then
@@ -379,7 +382,7 @@ function QuestionDockForm({
 		void finishDictation().then(doSubmit);
 	};
 	const doSubmit = () => {
-		if (!canSubmit) return;
+		if (!canSubmit || transcribing || handwriting.uploading) return;
 		const req: AnswerRequest = {
 			dontKnow: sel.dontKnow,
 			values: [...sel.selected].map((i) => qd.options[i]!.value),
@@ -390,7 +393,7 @@ function QuestionDockForm({
 			// "untouched"); buildAnswer drops it on "I don't know".
 			confidence: kind === "quiz" ? CONFIDENCE_STOPS[confIdx] : undefined,
 		};
-		onSubmit(buildAnswer(qd, req, toolName));
+		onSubmit({ ...buildAnswer(qd, req, toolName), ...(handwriting.items.length ? { attachments: handwriting.items } : {}) });
 	};
 
 	/* ENTER SUBMITS FROM ANYWHERE (owner round 6, 2026-10-05): the same
@@ -824,12 +827,17 @@ function QuestionDockForm({
 				}}
 			>
 				<div
+					{...handwriting.handlers}
 					data-testid={qd.mode === "text" ? "answer-field" : "thinking-field"}
 					className="rounded-[10px] border border-border/70 bg-background/60 transition-colors focus-within:border-primary/50"
 				>
 					<div className="px-2.5 pt-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">
 						{qd.mode === "text" ? "Your answer" : "YOUR THINKING"}
 					</div>
+					<HandwritingInput draft={handwriting} onBusyChange={setTranscribing} onTranscribed={value => {
+						if (qd.mode === "text") { const next = joinDictation(answerTextRef.current, value); answerTextRef.current = next; setText(next); }
+						else { const next = joinDictation(thinkingTextRef.current, value); thinkingTextRef.current = next; setThinking(next); }
+					}} />
 					{qd.mode === "text" ? (
 						<textarea
 							value={text}
@@ -900,7 +908,7 @@ function QuestionDockForm({
 						</span>
 						<Button
 							type="submit"
-							disabled={!canSubmit || compactionRunning}
+							disabled={!canSubmit || compactionRunning || transcribing || handwriting.uploading}
 							className="ml-auto h-9 rounded-[6px] px-3.5 text-sm font-medium"
 						>
 							Submit answer

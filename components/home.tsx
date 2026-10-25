@@ -1,5 +1,6 @@
 "use client";
 
+import { AttachmentPicker, useAttachments } from "./attachments";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { CornerDownLeftIcon, DumbbellIcon } from "lucide-react";
@@ -31,6 +32,7 @@ export function Home({
 	rendering?: boolean;
 }) {
 	const router = useRouter();
+	const attachments = useAttachments();
 	const [topic, setTopic] = useState("");
 	/* The topic MIRROR ("nothing gets lost" round, 2026-10-01 — same
 	 * mechanics as the chat composer, owner's consistency ruling): a
@@ -112,7 +114,7 @@ export function Home({
 	};
 	const begin = async () => {
 		const t = topicRef.current.trim();
-		if (!t || busy) return;
+		if (!t || busy || attachments.uploading || attachments.pdf) return;
 		// Unconfigured: the send INTERCEPTS into the setup flow (the draft
 		// stays in the textarea; the learner sends it after Save).
 		if (!configured) {
@@ -150,7 +152,7 @@ export function Home({
 			// No settings PUT on create (per-session models, owner
 			// 2026-09-28): the SERVER stamps the newborn from the strong
 			// slot — the same default this surface's model control edits.
-			router.push(`/chat/${id}?prompt=${encodeURIComponent(t)}`);
+			router.push(`/chat/${id}?prompt=${encodeURIComponent(t)}${attachments.items.length ? `&attachments=${attachments.items.map(a => a.id).join(",")}` : ""}`);
 		} catch {
 			setBusy(false);
 		}
@@ -241,7 +243,7 @@ export function Home({
 							)
 						)}
 					/>
-					<form
+					<div {...attachments.handlers}><AttachmentPicker draft={attachments} disabled={busy} /><form
 						className="flex items-end gap-1.5 rounded-2xl border bg-card p-1.5 shadow-lg"
 					onSubmit={(e) => {
 						e.preventDefault();
@@ -280,12 +282,12 @@ export function Home({
 					<button
 						type="submit"
 						aria-label="Start session"
-						disabled={(!topic.trim() && !dictation.active) || busy}
+						disabled={(!topic.trim() && !dictation.active) || busy || attachments.uploading || !!attachments.pdf}
 						className="flex size-10 shrink-0 items-center justify-center rounded-[10px] bg-primary text-primary-foreground transition-colors hover:opacity-90 disabled:opacity-40"
 					>
 						<CornerDownLeftIcon className="size-5" />
 					</button>
-					</form>
+					</form></div>
 					{/* Same as the chat view's under-composer stats bar (owner) — no
 					    session yet, so the LEFT side renders nothing (wave 7 sweep)
 					    while the RIGHT keeps the strong-slot control (fix wave: the
