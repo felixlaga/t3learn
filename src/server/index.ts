@@ -50,3 +50,5 @@ export * from "./cli-providers.ts";
 
 export { uploadAttachment, downloadAttachment, getAttachmentRef } from "./attachments.ts";
 export { transcribeAttachment } from "./transcription.ts";
+export { learningRoute, startLearningRoute, proposeLearningRoute, learningSessionDetail } from "./learning.ts";
+export { cliRequestAllowed } from "./cli-providers.ts";

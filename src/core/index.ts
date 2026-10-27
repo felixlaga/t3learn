@@ -84,3 +84,4 @@ export * from "./session-markdown.ts";
 export * from "./contracts/cli-providers.ts";
 
 export * from "./attachments.ts";
+export * from "./learning.ts";

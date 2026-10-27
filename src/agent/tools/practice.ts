@@ -27,6 +27,7 @@ import { activeProblemOf } from "../../core/native-messages.ts";
 import type { LhMessage } from "../../core/native-messages.ts";
 import { concludeResult, invalidInputResult, problemResult } from "../tool-execute.ts";
 import { healEncodedArguments, healToolRecord } from "./heal.ts";
+import type { ReviewItem } from "../../core/learning.ts";
 
 
 /** The record-reading context the gates need (the plan-tools idiom). */
@@ -44,6 +45,8 @@ export interface PracticeToolContext {
 	 *  Each absent context (tests) = absent from the registry. */
 	graph?: GraphToolContext;
 	jobs?: JobToolContext;
+	/** Explicitly selected objectives for this review session. Never inferred from graph membership. */
+	reviewItems?: readonly ReviewItem[];
 }
 
 /** TURN-SCOPED GATE STATE (the BKT incident, 2026-10-05): the gates used
@@ -58,18 +61,22 @@ export interface PracticeToolContext {
  *  this closure — the intra-turn truth the record cannot hold yet. */
 export interface PracticeGate {
 	problemActive: boolean;
+	reviewTargets?: string[];
 }
 
 /** Seed the turn's gate from the record (result-aware activeProblemOf —
  *  only a cleanly-posed problem counts). */
 export function createPracticeGate(ctx: PracticeToolContext): PracticeGate {
 	const record = ctx.chatStore.getChat(ctx.chatId);
-	return { problemActive: record ? activeProblemOf(record.messages) !== null : false };
+	const active = record ? activeProblemOf(record.messages) : null;
+	const input = active?.input as { reviewTargets?: string[] } | undefined;
+	return { problemActive: active !== null, ...(input?.reviewTargets ? { reviewTargets: input.reviewTargets } : {}) };
 }
 
 // ─── problem: the pose ───────────────────────────────────────────────────────
 
 export const problemInputObject = Type.Object({
+	reviewTargets: Type.Optional(Type.Array(Type.String(), { minItems: 1, maxItems: 64, description: "In an explicitly selected review session: the review objective IDs this problem tests. These are NOT graph node IDs. Test only the named capabilities; omit in ordinary practice." })),
 	statement: Type.String({
 		description:
 			"REQUIRED — the problem as the learner sees it (markdown + LaTeX). Must be self-contained and " +
@@ -97,6 +104,7 @@ export type ProblemInput = Static<typeof problemInputObject>;
 export function problemTool(
 	gate: PracticeGate,
 	graphNodes?: PracticeToolContext["graphNodes"],
+	reviewItems?: PracticeToolContext["reviewItems"],
 ): AgentTool<typeof problemInputObject> {
 	return {
 		name: "problem",
@@ -139,6 +147,10 @@ export function problemTool(
 					"a problem is already active — call conclude on it before posing the next one",
 				]);
 			}
+			if (reviewItems?.length && (!input.reviewTargets?.length || input.reviewTargets.some(id => !reviewItems.some(i => i.id === id)))) {
+				return invalidInputResult("problem", ["Use reviewTargets containing only the selected review objective IDs."]);
+			}
+			if (input.reviewTargets?.length && !reviewItems?.length) return invalidInputResult("problem", ["No review objectives were selected for this session."]);
 			// TARGET VALIDATION (owner round 9, round 12): against the WHOLE
 			// graph, and ONLY when targets are present — absent means an
 			// untagged problem (topic sessions, owner round 12), which poses
@@ -155,6 +167,7 @@ export function problemTool(
 				}
 			}
 			gate.problemActive = true;
+			gate.reviewTargets = input.reviewTargets;
 			return problemResult();
 		},
 	};
@@ -163,6 +176,11 @@ export function problemTool(
 // ─── conclude: the end of a problem ──────────────────────────────────────────
 
 export const concludeInputObject = Type.Object({
+	reviewAssessments: Type.Optional(Type.Array(Type.Object({
+		itemId: Type.String(),
+		assessment: Type.Union([Type.Literal("independent"), Type.Literal("supported"), Type.Literal("unsuccessful"), Type.Literal("unassessed")]),
+		reason: Type.String({ minLength: 1, maxLength: 2000, description: "The reasoning actually observed for THIS objective. Distinguish assumptions, derivation, result, observables and limitations. Use unassessed for uncertain or untested evidence." }),
+	}), { maxItems: 64, description: "One separate assessment per problem.reviewTargets ID. Do not copy the whole-problem outcome across its targets." })),
 	outcome: Type.Union(
 		[
 			Type.Literal("solved"),
@@ -209,11 +227,21 @@ export function concludeTool(gate: PracticeGate): AgentTool<typeof concludeInput
 		parameters: concludeInputObject,
 		prepareArguments: (args: unknown) => healEncodedArguments(args, concludeInputObject) as never,
 		executionMode: "sequential",
-		execute: async (_toolCallId, _input) => {
+		execute: async (_toolCallId, input) => {
 			if (!gate.problemActive) {
 				return invalidInputResult("conclude", ["no active problem to conclude — pose one first"]);
 			}
+			if (gate.reviewTargets?.length && !["movedOn", "dismissed"].includes(input.outcome)) {
+				const assessments = input.reviewAssessments ?? [];
+				const ids = assessments.map(a => a.itemId);
+				const expected = new Set(gate.reviewTargets);
+				if (new Set(ids).size !== ids.length || ids.length !== expected.size || ids.some(id => !expected.has(id))) {
+					return invalidInputResult("conclude", ["Assess every tested review objective separately, exactly once. Use unassessed when the evidence is missing or uncertain."]);
+				}
+			}
+			if (!gate.reviewTargets?.length && input.reviewAssessments?.length) return invalidInputResult("conclude", ["This problem has no review targets to assess."]);
 			gate.problemActive = false;
+			gate.reviewTargets = undefined;
 			return concludeResult();
 		},
 	};
@@ -236,7 +264,7 @@ export function practiceTools(ctx: PracticeToolContext): Record<string, AgentToo
 	// keep their own (target-normalizing) prepareArguments as the composed
 	// inner pass; the double heal is idempotent by construction.
 	return healToolRecord({
-		problem: problemTool(gate, ctx.graphNodes),
+		problem: problemTool(gate, ctx.graphNodes, ctx.reviewItems),
 		conclude: concludeTool(gate),
 		read: readTool,
 		ls: lsTool,

@@ -60,6 +60,7 @@ import { PracticeDock } from "@/components/practice-dock";
 import { ThinkingCard, type PracticeThinkingData } from "@/components/practice-cards";
 import { GraphContextCard, type GraphContextData } from "@/components/graph-context-card";
 import { TopBar } from "@/components/top-bar";
+import { LearningSessionBar } from "@/components/learning-session-bar";
 import type { ArtifactPartProps, JobRecord, Phase3, QuestionAnswerData, TurnUsage, SessionPricing } from "@/src/core";
 import type { LhViewMessage } from "@/src/core";
 import { PhaseChip, PhaseDivider } from "@/components/phase-divider";
@@ -1326,6 +1327,7 @@ export function Chat({
 						<PhaseChip phase={phases.at(-1) ?? "probe"} />
 					)}
 				</TopBar>
+				<LearningSessionBar chatId={chatId}/>
 
 				<SessionFind scopeRef={sessionFindScopeRef} scrollContextRef={scrollContextRef} />
 				<div ref={sessionFindScopeRef} className="relative flex min-h-0 flex-1">
@@ -2021,24 +2023,57 @@ function DockOverlay({
 	// round 2): the scroller reserves symmetric gutters (scrollbar-gutter:
 	// stable both-edges), so inset the overlay's right edge by the gutter —
 	// zero on macOS overlay scrollbars, the real width on classic platforms.
-	// The same measure owns the QUESTION/PROBLEM HEIGHT CAP (owner round,
-	// 2026-10-05): the old fixed fractions (55dvh / 40vh) cut long problems
-	// off absurdly short — the cap is now the AVAILABLE COLUMN (the
-	// scroller already starts below the top bar) minus a 2rem breathing
-	// gap, carried as --dock-max-h for the docks' scroll areas.
+	// The question's scroll area gets the space LEFT after the thinking
+	// field, attachments, confidence rail, setup prompt and stats row.
+	// Giving the question the whole column let those controls push its top
+	// above the window. Observe the natural column too: typing/attachments
+	// can change that remainder without a window resize.
 	const [sbInset, setSbInset] = useState(0);
 	const [dockMaxH, setDockMaxH] = useState<number | null>(null);
-	useEffect(() => {
-		const el = scrollRef.current;
-		if (!el) return;
+	const [dockAvailableH, setDockAvailableH] = useState<number | null>(null);
+	const [dockOverflow, setDockOverflow] = useState(false);
+	useIsoLayoutEffect(() => {
+		let frame = 0;
+		let observer: ResizeObserver | undefined;
 		const measure = () => {
+			const el = scrollRef.current, block = blockRef.current;
+			if (!el || !block) return;
+			const available = Math.max(1, el.clientHeight - 32);
 			setSbInset(Math.round((el.offsetWidth - el.clientWidth) / 2));
-			setDockMaxH(Math.max(el.clientHeight - 32, 160));
+			setDockAvailableH(available);
+			if (!expanded || (!pending && !practice)) { setDockOverflow(false); return; }
+			// A folding animation temporarily changes the shell's height, not
+			// the space its controls need. Measure after that morph settles.
+			if (shellRef.current?.getAnimations().some(a => a.playState === "running")) {
+				frame = requestAnimationFrame(measure);
+				return;
+			}
+			const area = block.querySelector<HTMLElement>("[data-dock-scroll]");
+			const column = block.firstElementChild as HTMLElement | null;
+			if (!area || !column) return;
+			const style = getComputedStyle(block);
+			const padding = parseFloat(style.paddingTop) + parseFloat(style.paddingBottom);
+			const controls = Math.max(0, column.offsetHeight - area.offsetHeight + padding);
+			setDockMaxH(Math.max(160, available - controls));
+			// In an exceptionally short window the controls alone may not fit.
+			// Keep some question space and let the entire panel scroll as well.
+			setDockOverflow(controls + 160 > available);
 		};
-		measure();
-		window.addEventListener("resize", measure);
-		return () => window.removeEventListener("resize", measure);
-	}, [scrollRef]);
+		const schedule = () => { cancelAnimationFrame(frame); frame = requestAnimationFrame(measure); };
+		const connect = () => {
+			const el = scrollRef.current, block = blockRef.current;
+			// The conversation library can attach its scroller after this
+			// effect. Retry the attachment instead of permanently using vh.
+			if (!el || !block) { frame = requestAnimationFrame(connect); return; }
+			observer = new ResizeObserver(schedule);
+			observer.observe(el);
+			if (block.firstElementChild) observer.observe(block.firstElementChild);
+			measure();
+		};
+		connect();
+		window.addEventListener("resize", schedule);
+		return () => { cancelAnimationFrame(frame); observer?.disconnect(); window.removeEventListener("resize", schedule); };
+	}, [scrollRef, expanded, pending?.toolCallId, practice?.toolCallId]);
 
 	// GROWTH MUTE (owner round, 2026-10-05 — the generation churn): during a
 	// live turn the transcript content grows and stick-to-bottom chases it;
@@ -2075,16 +2110,25 @@ function DockOverlay({
 		const el = scrollRef.current;
 		if (!root || !el) return;
 		const canScroll = (n: HTMLElement, dir: number) => {
+			if (!/(auto|scroll)/.test(getComputedStyle(n).overflowY)) return false;
 			if (n.scrollHeight - n.clientHeight < 2) return false; // not scrollable
 			return dir < 0 ? n.scrollTop > 0 : n.scrollTop < n.scrollHeight - n.clientHeight - 0.5;
 		};
 		const onWheel = (e: WheelEvent) => {
 			if (e.deltaY === 0) return;
-			for (let n = e.target as HTMLElement | null; n && n !== root; n = n.parentElement) {
-				if (n instanceof HTMLElement && canScroll(n, e.deltaY)) return; // native
+			const delta = e.deltaY * (e.deltaMode === 1 ? 16 : e.deltaMode === 2 ? el.clientHeight : 1);
+			for (let n = e.target as HTMLElement | null; n; n = n.parentElement) {
+				if (n instanceof HTMLElement && canScroll(n, e.deltaY)) {
+					// The shell clips its height morph (overflow:hidden), so
+					// native chaining can stop there before reaching the outer
+					// short-window fallback. Route that fallback explicitly.
+					if (n === root) { e.preventDefault(); root.scrollTop += delta; }
+					return;
+				}
+				if (n === root) break;
 			}
 			e.preventDefault();
-			el.scrollTop += e.deltaY * (e.deltaMode === 1 ? 16 : e.deltaMode === 2 ? el.clientHeight : 1);
+			el.scrollTop += delta;
 		};
 		root.addEventListener("wheel", onWheel, { passive: false });
 		return () => root.removeEventListener("wheel", onWheel);
@@ -2281,7 +2325,12 @@ function DockOverlay({
 	return (
 		<div className="pointer-events-none absolute inset-x-0 bottom-0" style={{ right: sbInset }}>
 			<div className="h-24 bg-gradient-to-t from-background via-background/85 to-transparent" />
-			<div ref={blockRef} className="relative bg-background pb-5" style={{ "--dock-max-h": dockMaxH ? `${dockMaxH}px` : undefined } as React.CSSProperties}>
+			<div ref={blockRef} data-testid="dock-block" className="relative bg-background pb-5" style={{
+				"--dock-max-h": dockMaxH ? `${dockMaxH}px` : undefined,
+				maxHeight: dockOverflow ? dockAvailableH ?? undefined : undefined,
+				overflowY: dockOverflow ? "auto" : undefined,
+				pointerEvents: dockOverflow ? "auto" : undefined,
+			} as React.CSSProperties}>
 				<div className={DOCK}>
 					{setupCta}
 					{/* The queued-steer indicator (owner spec 2026-10-03): quiet

@@ -337,7 +337,8 @@ describe("practice prompt composition (own directory + the formatting appendix)"
 		assert.doesNotMatch(prompt, /install understanding/);
 		// The shared 20-question-tools doctrine (predict/check) must not
 		// compose — practice has its own demand theory.
-		assert.doesNotMatch(prompt, /predict/i);
+		assert.doesNotMatch(prompt, /type="predict"|type: "predict"|# Question tools/i);
+		assert.ok(!composeInstructions("practice").includes("# Question tools"));
 	});
 
 	it("the SHARED voice + accuracy compose (owner round 13): ONE law across every agent, and the stale line is dead", () => {
@@ -370,7 +371,7 @@ describe("practice prompt composition (own directory + the formatting appendix)"
 		assert.match(teacher, /No size ceiling/);
 		assert.match(teacher, /never rush the repair/);
 		assert.match(teacher, /one and only pace/);
-		assert.match(teacher, /nothing to rush/, "the goal reiteration composes");
+		assert.match(teacher, /never requires rushing through a missing foundation/, "the depth and pacing commitment composes");
 	});
 
 	it("the prober doctrine steers difficulty by evidence (owner round, 2026-10-07)", () => {

@@ -88,3 +88,7 @@ Questions, bug reports, and feature requests: [GitHub Issues](https://github.com
 [AGPL-3.0](LICENSE)
 
 The app is free and open forever. If we ever charge for anything, it will be for convenience — managed keys, hosting — never for features you can run locally.
+
+## Daily learning
+
+Use **Today**, **Goals** and **Review** for a daily session built around one main subject and a brief review of material you explicitly choose. The default is about 30 minutes. Teaching adapts to maths, physics, systems engineering and other interests. See [the daily learning guide](docs/daily-learning.md) for enrollment, grading and storage details.

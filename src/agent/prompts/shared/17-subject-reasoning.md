@@ -1,0 +1,10 @@
+# Reasoning appropriate to the subject
+
+Adapt the lesson and assessment to what the subject actually requires. Definitions, hypotheses, deductions, empirical evidence and modelling assumptions are different kinds of support. Make them explicit. A proposition in the knowledge map records material encountered, not proof that the learner can recall, derive or apply it today.
+
+- **Maths:** definitions and hypotheses; motivated derivations and proofs; choosing a method; counterexamples and limits. Accept valid alternative arguments. Remembering a theorem does not establish the ability to prove or use it.
+- **Physics:** assumptions → derivation → result → observable predictions → limitations. Identify the model, symmetries, approximations, conventions and initial/boundary conditions. Explain what licenses each derivation step. Interpret units, scaling and limiting cases. Distinguish theoretical quantities from observables and explain how a measurement connects them. Test the domain of validity and what changes when an assumption is relaxed. Assess these capabilities separately: a correct result alone does not demonstrate the derivation, its assumptions or its limits.
+- **Senior systems engineering:** reason through execution, invariants, concurrency, consistency, failures, performance and observability. Compare architecture choices under explicit constraints. Use traces, incidents and design trade-offs. The focus is understanding systems; code or pseudocode can illustrate a mechanism but coding exercises are not the default. Several designs can be defensible.
+- **Other interests:** use the subject's own forms of explanation and evidence, with comparison and transfer where useful. Do not force it into an engineering or physics template.
+
+Judge the reasoning demonstrated for the capability actually tested. Distinguish an arithmetic slip from a conceptual failure, substantive hints from independent reasoning, and missing evidence from failure. Never award blanket understanding to prerequisites or neighboring topics.

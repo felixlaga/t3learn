@@ -15,8 +15,8 @@ function fixture(t: { after(fn: () => void): void }) {
 }
 test("backup allowlist excludes credential stores, runtime state, jobs, logs, and attachments", (t) => {
 	const { root, write } = fixture(t);
-	for (const file of ["chats/chat_1.json", "graph/nodes.jsonl", "settings.json", "auth.json", "cli-providers.json", "graph/auth.json", "jobs/task.json", "debug/trace.json", "attachments/file.json"]) write(file, '{}\n');
-	assert.deepEqual(collectLearningSnapshot(root).map((file: { path: string }) => file.path), ["chats/chat_1.json", "graph/nodes.jsonl", "settings.json"]);
+	for (const file of ["chats/chat_1.json", "graph/nodes.jsonl", "settings.json", "learning.json", "auth.json", "cli-providers.json", "graph/auth.json", "jobs/task.json", "debug/trace.json", "attachments/file.json"]) write(file, '{}\n');
+	assert.deepEqual(collectLearningSnapshot(root).map((file: { path: string }) => file.path), ["chats/chat_1.json", "graph/nodes.jsonl", "learning.json", "settings.json"]);
 	for (const file of ["../auth.json", "graph/../../auth.json", "chats/../auth.json", "graph/nodes.jsonl/secret", "chats\\chat_1.json"]) assert.equal(allowedLearningFile(file), false);
 });
 test("backup refuses symlinks, broken JSON and large inline records", (t) => {
@@ -48,6 +48,17 @@ test("restore rejects path traversal and secret paths even with a manifest", (t)
 		assert.throws(() => restoreLearningSnapshot(path.join(root, "snapshot"), path.join(root, "bad")), /Unsafe/);
 		assert.equal(fs.existsSync(path.join(root, "bad")), false);
 	}
+});
+test("learning goals and review enrollment survive a verified backup/restore", t => {
+	const { root, write } = fixture(t);
+	const learning = JSON.stringify({ version: 1, revision: 3, dailyMinutes: 30, goals: [], reviewItems: [{ id: "chosen_objective" }], sessions: {} });
+	write("source/learning.json", learning);
+	const inventory = collectLearningSnapshot(path.join(root, "source"));
+	write("snapshot/learning.json", learning);
+	write("snapshot/manifest.json", JSON.stringify({ schema: 1, files: inventory }));
+	const destination = path.join(root, "restored");
+	assert.equal(restoreLearningSnapshot(path.join(root, "snapshot"), destination), 1);
+	assert.equal(fs.readFileSync(path.join(destination, "learning.json"), "utf8"), learning);
 });
 test("backup refuses a public destination before cloning or uploading", (t) => {
 	const { root, write } = fixture(t);

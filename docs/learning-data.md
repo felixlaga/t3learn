@@ -16,6 +16,8 @@ Files and their prepared model context live in `data/attachments/<id>/`, separat
 
 ## Progress
 
+For daily subject selection, learning goals and strictly chosen spaced review, see [Daily learning](daily-learning.md). These records are separate from the knowledge graph and the activity totals below.
+
 The **Progress** button beside Settings opens your XP, level, milestone badges, streaks, 30-day calendar and knowledge-map statistics. Every answered learning question earns 20 XP; each 200 XP advances one level (starting at level 1). Honest “I don’t know” responses count. Skips, preference questions, failed tools and unanswered questions do not. Duplicate results cannot award XP twice.
 
 The totals are derived from the existing saved records. A human message, practice step or answered learning question makes an active day in the viewer's timezone. Yesterday's streak remains current until today ends. Deleting history can reduce XP, streaks and badges. Graph counts reflect deduplicated propositions and reasoning chains, including imported notes. They do not measure mastery. No game data enters the teaching prompts, changes grading or modifies the learning tools.
@@ -34,9 +36,11 @@ The local macOS edition stores its records under:
   graph/sources.json
   graph/format.json
   settings.json
+  learning.json
 ```
 
 - Each chat JSON contains its native transcript, structured answers, confidence/thinking fields, model settings and usage records.
+- `learning.json` stores learning goals, chosen review objectives, session context and the daily time preference. Review evidence comes from the corresponding chat transcripts.
 - `nodes.jsonl` stores propositions: a short name, full statement, alternate phrasings and provenance pointing to source messages.
 - `chains.jsonl` stores reasoning arguments: premise IDs, a conclusion ID and provenance. Repeated assertions are merged when the graph is read; canvas arrows are derived from these chains.
 - `coverage.jsonl` tracks which message content has been extracted. Extraction runs in the background once enough uncovered teaching content accumulates, or through the existing manual extraction flow. A new chat does not immediately imply new graph nodes.
@@ -64,7 +68,7 @@ npm run data:backup -- --repo felixlaga/t3learn-data
 
 The default on macOS is the Local app's data directory shown above. For a different installation, pass `--data /absolute/path/to/data`. The command verifies the destination is private, takes a checksum inventory, checks for changes during collection, commits a snapshot and pushes. An unchanged snapshot produces no new commit. Existing remote work is never force-pushed.
 
-Included: chat JSON, the known graph JSON/JSONL files, and nonsecret `settings.json`. Excluded: auth files, CLI configuration/credentials, debug logs, background job state, caches, prompt overrides and external attachment directories. Inline images already present inside a chat record remain part of that record. An individual record over 10 MiB causes the backup to stop rather than silently omit that record; larger media need separate storage. This is a learning-record backup, not a complete computer backup.
+Included: chat JSON, the known graph JSON/JSONL files, `learning.json`, and nonsecret `settings.json`. Excluded: auth files, CLI configuration/credentials, debug logs, background job state, caches, prompt overrides and external attachment directories. Inline images already present inside a chat record remain part of that record. An individual record over 10 MiB causes the backup to stop rather than silently omit that record; larger media need separate storage. This is a learning-record backup, not a complete computer backup.
 
 API keys are in a separate `auth.json` above the data directory, and subscription credentials remain with the CLIs/Keychain. Those credential stores are never included. Private repository contents are not end-to-end encrypted by this script; people you grant repository access can read them. Deleted learning records disappear from the latest snapshot but remain in earlier Git commits.
 

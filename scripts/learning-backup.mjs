@@ -8,7 +8,7 @@ import { fileURLToPath } from "node:url";
 const GRAPH_FILES = new Set(["nodes.jsonl", "chains.jsonl", "sessions.jsonl", "coverage.jsonl", "sources.json", "positions.json", "render-settings.json", "format.json"]);
 const MAX_FILE_BYTES = 10 * 1024 * 1024;
 export function allowedLearningFile(relative) {
-	return relative === "settings.json" || /^chats\/[A-Za-z0-9_-]+\.json$/.test(relative) || relative.startsWith("graph/") && GRAPH_FILES.has(relative.slice(6));
+	return relative === "settings.json" || relative === "learning.json" || /^chats\/[A-Za-z0-9_-]+\.json$/.test(relative) || relative.startsWith("graph/") && GRAPH_FILES.has(relative.slice(6));
 }
 const digest = (buffer) => createHash("sha256").update(buffer).digest("hex");
 
@@ -18,7 +18,7 @@ const digest = (buffer) => createHash("sha256").update(buffer).digest("hex");
 export function collectLearningSnapshot(dataDir) {
 	const root = path.resolve(dataDir);
 	if (!fs.statSync(root).isDirectory()) throw new Error("Learning data directory is not a directory.");
-	const candidates = ["settings.json"];
+	const candidates = ["settings.json", "learning.json"];
 	for (const directory of ["chats", "graph"]) {
 		const full = path.join(root, directory);
 		if (!fs.existsSync(full)) continue;

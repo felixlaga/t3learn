@@ -686,6 +686,9 @@ function SessionsSidebar() {
 				    half/half row): full-width rows read cleaner and give the
 				    labels room; teaching keeps the original draft route,
 				    practice carries its mode. */}
+				<nav aria-label="Daily learning" className="mx-3 mb-3 flex flex-col gap-1">
+					{([["/today", "Today"], ["/goals", "Goals"], ["/review", "Review"]] as const).map(([href, label]) => <Link key={href} href={href} aria-current={pathname === href ? "page" : undefined} className={cn("rounded-md px-2 py-2 text-sm transition-colors hover:bg-accent", pathname === href ? "bg-accent text-foreground" : "text-muted-foreground")}>{label}</Link>)}
+				</nav>
 				<div className="mx-3 mb-2 flex flex-col gap-1.5">
 					<button
 						type="button"

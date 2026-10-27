@@ -47,6 +47,7 @@ import { registerTurn, unregisterTurn } from "./turn-runs.ts";
 import { persistTurn, triggerExtraction } from "./turn-service.ts";
 import { hasProbeDone, danglingQuestionOf } from "../core/native-messages.ts";
 import { composeInstructions } from "../agent/teacher-agent.ts";
+import { learningSessionInstructions } from "../core/learning.ts";
 import { ensureCompacted, kickCompaction, effectiveThresholdTokens } from "./compaction.ts";
 import { catalogContextLimits, refreshConnectionCatalog } from "./model-catalog.ts";
 import { emit } from "../core/events.ts";
@@ -387,7 +388,9 @@ export async function handleChatInput(
 		commitStaged: () => { stores.chatStore.saveMessages(chatId, merged); persistBaseCount = merged.length; },
 		restoreAutomatic: (automaticIds, retainedIds) => restoreUncommittedAutomatic(chatId, constructed, automaticIds, retainedIds),
 	});
+	const learningSession = stores.learningStore.read().sessions[chatId];
 	const agentOpts: AgentBuildOptions = {
+		...(learningSession ? { learningInstructions: learningSessionInstructions(learningSession) } : {}),
 		attachmentContent,
 		engine,
 		callPurpose,
@@ -415,6 +418,7 @@ export async function handleChatInput(
 					{
 						chatId,
 						chatStore: stores.chatStore,
+						reviewItems: learningSession?.reviewItems,
 						// TARGET VALIDATION (owner round 9): the practice tools read the
 						// WHOLE graph fresh per pose — targets validate against every
 						// proposition, not just the session's picks (pickless sessions
