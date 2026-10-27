@@ -179,8 +179,10 @@ describe("the source-derived segment list", () => {
 				"system-prompt.md",
 				"prober/10-probe-doctrine.md",
 				"shared/10-voice.md",
+				"shared/12-explaining.md",
 				"shared/15-accuracy.md",
 				"shared/16-mental-model.md",
+				"shared/17-subject-reasoning.md",
 				"shared/20-question-tools.md",
 				"shared/25-confidence.md",
 				"shared/30-learner-files.md",
@@ -276,10 +278,10 @@ describe("composeInstructions: override honoring + the byte-identical source pat
 		try {
 			const on = composeInstructions("teacher", { "teacher/20-teaching.md": true });
 			assert.ok(on.includes("CUSTOM TEACHING LOOP"), "override composes when switch on");
-			assert.ok(!on.includes("# Teach — one step at a time"), "source text is replaced");
+			assert.ok(!on.includes("# Teach: one step at a time"), "source text is replaced");
 			// switch off → source default (the file stays on disk)
 			const off = composeInstructions("teacher", {});
-			assert.ok(off.includes("# Teach — one step at a time"), "source composes when switch off");
+			assert.ok(off.includes("# Teach: one step at a time"), "source composes when switch off");
 			// switch on for a segment with NO file → source (enabled needs both)
 			const noFile = composeInstructions("teacher", { "teacher/10-planning.md": true });
 			assert.ok(noFile.includes("# Planning"), "file absent → source default");

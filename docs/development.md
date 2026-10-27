@@ -30,6 +30,10 @@ npm run desktop:dist   # local signed/notarized macOS arm64 build (LH_NOTARY key
 npx tsx --env-file=.env.local scripts/import-notes.ts <dir>   # bulk-import notes → graph
 npx tsx --env-file=.env.local scripts/backfill-graph.ts       # wipe + re-extract every chat
 npx tsx --env-file=.env.local scripts/replay-layout.ts        # re-derive layout from the ledgers
+
+# prompt work: regenerate one teacher turn of a recorded chat through the Claude CLI path
+# (--clean strips the old dashes from earlier turns; --prompt=<file> swaps in a saved composed prompt)
+NODE_ENV=test npx tsx scripts/replay-turn.ts <chat.json> <messageIndex> --samples=4 --clean
 ```
 
 For Windows/Linux packages and the three-OS CI/release flow, see [`desktop-release.md`](desktop-release.md). Native renderer binaries are traced per platform, so release builds run on the target OS, not as cross-builds from macOS.

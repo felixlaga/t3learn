@@ -11,9 +11,11 @@ Rules for adding a fragment:
 - Name it with a numeric order prefix, inside the right agent directory.
 - `shared/` fragments compose into BOTH agents (after the base and their own
   fragments — a trailing appendix): cross-agent doctrine only, phase-neutral by
-  construction: `20-question-tools.md` (tool MECHANICS only; what to ask is each
-  phase's own doctrine), `30-learner-files.md`, `40-formatting.md`. The voice lives
-  in the base (moved out of shared/ 2026-09-27). The "never reference the other
+  construction: `12-explaining.md` (how to write an explanation he can read: the
+  moves of great explainers, the sentence rules, the words he never sees; composes
+  into all three agents, practice included), `20-question-tools.md` (tool
+  MECHANICS only; what to ask is each phase's own doctrine), `30-learner-files.md`,
+  `40-formatting.md`. The voice lives in `10-voice.md`. The "never reference the other
   agent's tools" rule below still applies, so shared fragments may only cover tools
   both agents actually hold.
 - One fragment per workstream — your brief tells you which filename you own.
