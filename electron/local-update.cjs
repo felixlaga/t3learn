@@ -76,6 +76,9 @@ function swapScript() {
 	return `#!/bin/sh
 # T3Learn update helper: wait for the app to exit, swap the bundle, relaunch.
 set -u
+# A stray ELECTRON_RUN_AS_NODE (shells spawned by Electron apps export it)
+# would turn the relaunched app into a bare Node that exits at once.
+unset ELECTRON_RUN_AS_NODE
 pid="$1"; staged="$2"; target="$3"; logfile="$4"; launcher="\${5:-open}"
 say() { printf '%s %s\\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$1" >> "$logfile" 2>/dev/null; }
 i=0
@@ -265,7 +268,10 @@ function createLocalUpdater(deps) {
 			fs.writeFileSync(script, swapScript(), { mode: 0o755 });
 			fs.mkdirSync(path.dirname(deps.logFile), { recursive: true });
 			const args = [script, String(deps.pid ?? process.pid), stagedApp, bundle, deps.logFile, deps.launcher ?? "open"];
-			const child = spawn("/bin/sh", args, { detached: true, stdio: "ignore" });
+			// The helper outlives us and relaunches the app: hand it a clean
+			// environment (no ELECTRON_RUN_AS_NODE, see the script).
+			const { ELECTRON_RUN_AS_NODE: _dropped, ...env } = process.env;
+			const child = spawn("/bin/sh", args, { detached: true, stdio: "ignore", env });
 			child.unref?.();
 			deps.log(`helper started for ${bundle}; quitting`);
 			deps.quit();
