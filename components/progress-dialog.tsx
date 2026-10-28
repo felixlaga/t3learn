@@ -12,16 +12,22 @@ const number = (value: number) => value.toLocaleString();
 
 export function ProgressButton() {
 	return <Dialog.Root>
-		<Dialog.Trigger asChild>
-			{/* Icon-only since the T3 Code row (owner, 2026-10-28); the trophy
-			    keeps its amber (the owner's earlier choice), the label rides
-			    the tooltip and the accessible name. */}
-			<Hint label="Progress" side="top">
+		{/* Icon-only since the T3 Code row (owner, 2026-10-28); the trophy
+		    keeps its amber (the owner's earlier choice), the label rides
+		    the tooltip and the accessible name.
+		    ORDER IS LOAD-BEARING (fix, 2026-10-29): the tooltip wraps the
+		    dialog trigger, never the reverse. Dialog.Trigger asChild merges
+		    its onClick/ref/aria props into its child; Hint is a plain
+		    component that drops unknown props, so with Hint as the child the
+		    click never reached the button and the dialog never opened. The
+		    render test pins the merged props on the button itself. */}
+		<Hint label="Progress" side="top">
+			<Dialog.Trigger asChild>
 				<button type="button" data-testid="progress-entry" aria-label="Progress" className={FOOTER_ICON_CLASS}>
 					<TrophyIcon aria-hidden className="size-4 text-amber-400" />
 				</button>
-			</Hint>
-		</Dialog.Trigger>
+			</Dialog.Trigger>
+		</Hint>
 		<Dialog.Portal>
 			<Dialog.Overlay className="fixed inset-0 z-50 bg-black/65" />
 			<Dialog.Content data-testid="progress-dialog" className="fixed left-1/2 top-1/2 z-50 flex max-h-[90dvh] w-[min(920px,calc(100vw-2rem))] -translate-x-1/2 -translate-y-1/2 flex-col overflow-hidden rounded-3xl border border-border bg-background font-sans shadow-2xl focus:outline-none">
