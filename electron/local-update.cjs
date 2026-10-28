@@ -220,6 +220,14 @@ function createLocalUpdater(deps) {
 	async function download() {
 		if (state.status === "downloading") return inFlight ?? state;
 		if (state.status === "downloaded" && stagedApp) return state;
+		// Re-read the feed first: the "available" state can be hours old and
+		// a newer build may have landed since (a push to main every time).
+		try {
+			const fresh = await fetchManifest();
+			if (isNewer(fresh, current)) manifest = fresh;
+		} catch (err) {
+			deps.log(`re-check before download failed: ${err?.message ?? err}`);
+		}
 		if (!manifest) {
 			await check({ manual: true });
 			if (!manifest) return state;
