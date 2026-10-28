@@ -30,6 +30,7 @@ const { attachChatGPTChild, trustedSender, chatGPTControl } = require("./chatgpt
 const { createSubscriptions, loadSubscriptionSDK } = require("./subscriptions.cjs");
 const { attachSubscriptionChild, subscriptionControl } = require("./subscription-ipc.cjs");
 const { desktopAPIHeaders } = require("./desktop-api.cjs");
+const { createLocalUpdater } = require("./local-update.cjs");
 const { randomBytes } = require("node:crypto");
 const { spawn } = require("node:child_process");
 const fs = require("node:fs");
@@ -437,11 +438,25 @@ const ZOOM_LADDER = [0.75, 0.9, 1, 1.1, 1.25, 1.5, 1.75, 2];
  * banner asks for an immediate restart via "lh:update-install"; we kill
  * the child server FIRST — deterministic ordering: the server lives
  * inside the .app bundle Squirrel is about to replace (extraResources),
- * and before-quit alone would race the swap. */
+ * and before-quit alone would race the swap.
+ *
+ * Local edition (owner, 2026-10-28): the unsigned T3Learn build cannot use
+ * Squirrel.Mac, so lhLocalBuild routes everything below to
+ * electron/local-update.cjs instead: a JSON feed on the fork's rolling
+ * `local-latest` prerelease, a click-to-download zip, a hash check, and a
+ * detached shell helper that swaps the bundle after quit. The renderer
+ * sees the same "lh:update-status" channel either way, with more states
+ * (available, downloading, downloaded, error); the sidebar pill
+ * (components/update-pill.tsx) renders them. */
 const UPDATE_CHECK_INTERVAL_MS = 24 * 60 * 60 * 1000;
-let autoUpdater = null; // electron-updater's, packaged builds only
+let autoUpdater = null; // electron-updater's, signed packaged builds only
+let localUpdater = null; // electron/local-update.cjs, the local edition only
+// The last pushed status, answered to "lh:update-state" so a renderer that
+// mounts after a push still sees it.
+let updateState = { status: "idle", version: null };
 
 function broadcastUpdateStatus(status) {
+	updateState = status;
 	for (const win of BrowserWindow.getAllWindows()) {
 		try {
 			win.webContents.send("lh:update-status", status);
@@ -451,20 +466,32 @@ function broadcastUpdateStatus(status) {
 	}
 }
 
+/** Always resolves (to the resulting status); failures are log lines, and
+ *  a manual check answers through a native dialog as well. */
 function checkForUpdates({ manual = false } = {}) {
-	if (!autoUpdater) return;
-	autoUpdater
+	if (localUpdater) {
+		return localUpdater.check({ manual }).then((state) => {
+			if (!manual) return state;
+			if (state.status === "error") dialog.showMessageBox({ type: "warning", message: "Couldn't check for updates.", detail: state.message ?? "" });
+			else if (state.status === "idle") dialog.showMessageBox({ type: "info", message: "You're up to date.", detail: `${PRODUCT_NAME} ${app.getVersion()} build ${state.current?.build ?? 0} is the latest build.` });
+			return state;
+		});
+	}
+	if (!autoUpdater) return Promise.resolve(updateState);
+	return autoUpdater
 		.checkForUpdates()
 		.then((result) => {
-			// The download itself is silent (autoDownload); the banner fires on
+			// The download itself is silent (autoDownload); the pill shows on
 			// update-downloaded. Manual checks additionally answer directly.
-			if (!manual) return;
+			if (!manual) return updateState;
 			const version = result?.updateInfo?.version;
-			if (!version) dialog.showMessageBox({ type: "info", message: "You're up to date.", detail: `LearnHarness ${app.getVersion()} is the latest version.` });
+			if (!version) dialog.showMessageBox({ type: "info", message: "You're up to date.", detail: `${PRODUCT_NAME} ${app.getVersion()} is the latest version.` });
+			return updateState;
 		})
 		.catch((err) => {
 			log(`update check failed: ${err?.message ?? err}`);
 			if (manual) dialog.showMessageBox({ type: "warning", message: "Couldn't check for updates.", detail: String(err?.message ?? err) });
+			return updateState;
 		});
 }
 
@@ -475,12 +502,45 @@ function installUpdateNow() {
 	} catch {
 		/* already dead */
 	}
+	if (localUpdater) {
+		void localUpdater.install();
+		return;
+	}
 	autoUpdater?.quitAndInstall();
 }
 
+function setupLocalUpdater() {
+	if (process.platform !== "darwin") {
+		log("auto-update: local build on a non-mac platform — updater disabled");
+		return;
+	}
+	const pkg = require("../package.json");
+	const feed = process.env.LH_UPDATE_FEED || pkg.lhUpdateFeed;
+	if (!feed) {
+		log("auto-update: local build without a feed URL — updater disabled");
+		return;
+	}
+	const build = pkg.lhBuild ?? {};
+	localUpdater = createLocalUpdater({
+		feedUrl: feed,
+		current: { version: app.getVersion(), build: Number(build.number) || 0, commit: String(build.commit ?? "") },
+		exePath: app.getPath("exe"),
+		tempDir: app.getPath("temp"),
+		logFile: path.join(app.getPath("userData"), "logs", "update.log"),
+		log: (line) => log(`updater: ${line}`),
+		onState: broadcastUpdateStatus,
+		quit: () => app.quit(),
+	});
+	log(`auto-update: local build ${Number(build.number) || 0} (${String(build.commit ?? "").slice(0, 7) || "no commit"}) — feed ${feed}`);
+}
+
 function setupAutoUpdater() {
-	if (!app.isPackaged || require("../package.json").lhLocalBuild === true) {
+	if (!app.isPackaged) {
 		log("auto-update: dev build — updater disabled");
+		return;
+	}
+	if (IS_LOCAL_BUILD) {
+		setupLocalUpdater();
 		return;
 	}
 	try {
@@ -658,6 +718,12 @@ async function main() {
 	// are log lines — this can never block boot.
 	setupAutoUpdater();
 	ipcMain.on("lh:update-install", () => installUpdateNow());
+	// The pill's reads (components/update-pill.tsx): the last status for a
+	// late mount, a check, and the click-to-download of the local edition
+	// (the signed edition downloads by itself; the call just answers).
+	ipcMain.handle("lh:update-state", () => updateState);
+	ipcMain.handle("lh:update-check", () => checkForUpdates());
+	ipcMain.handle("lh:update-download", () => (localUpdater ? localUpdater.download() : updateState));
 
 	// Sidebar-at-narrow-window (owner, 2026-09-17): the renderer auto-closes
 	// the sidebar below SIDEBAR_AUTOCLOSE (928px); opening it again at that
@@ -679,10 +745,10 @@ async function main() {
 	});
 	createWindow(url);
 	log(`window open: ${url}`);
-	// First update check AFTER the window exists (the downloaded-banner
-	// push needs a listener); dev builds no-op (no autoUpdater).
-	if (autoUpdater) {
-		checkForUpdates();
-		setInterval(() => checkForUpdates(), UPDATE_CHECK_INTERVAL_MS);
+	// First update check AFTER the window exists (the status push needs a
+	// listener); dev builds no-op (no updater of either kind).
+	if (autoUpdater || localUpdater) {
+		void checkForUpdates();
+		setInterval(() => void checkForUpdates(), UPDATE_CHECK_INTERVAL_MS);
 	}
 }

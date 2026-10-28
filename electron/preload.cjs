@@ -19,9 +19,14 @@
  *
  *   window.lh.onUpdateStatus(cb) / window.lh.installUpdate() — the
  *   auto-update channel (Wave C, 2026-10-10): "lh:update-status" pushes
- *   {status:"downloaded", version} once an update is staged; installUpdate
- *   asks main to kill the server and quit-and-install. Browser builds:
- *   both absent, the banner never renders.
+ *   the status object ({status, version, ...}); installUpdate asks main
+ *   to kill the server and install. Browser builds: absent, the pill
+ *   never renders.
+ *
+ *   window.lh.updateState() / checkForUpdate() / downloadUpdate() — the
+ *   pill's reads (owner, 2026-10-28): the last pushed status for a late
+ *   mount, a check on demand, and the local edition's click-to-download.
+ *   Each resolves to the resulting status object.
  *
  * Channel names are mirrored in electron/main.cjs — keep them in sync.
  */
@@ -71,4 +76,7 @@ contextBridge.exposeInMainWorld("lh", {
 		return () => ipcRenderer.removeListener("lh:update-status", listener);
 	},
 	installUpdate: () => ipcRenderer.send("lh:update-install"),
+	updateState: () => ipcRenderer.invoke("lh:update-state"),
+	checkForUpdate: () => ipcRenderer.invoke("lh:update-check"),
+	downloadUpdate: () => ipcRenderer.invoke("lh:update-download"),
 });

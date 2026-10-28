@@ -4,8 +4,12 @@ import path from "node:path";
 
 if (process.platform !== "darwin") throw new Error("Build the macOS desktop app on a Mac.");
 const root = path.resolve(import.meta.dirname, "..");
+// The build identity (electron-builder.local.cjs reads these): CI sets the
+// run number and commit; a hand build defaults to build 0 at HEAD.
+const commit = process.env.LH_BUILD_COMMIT || spawnSync("git", ["rev-parse", "HEAD"], { cwd: root, encoding: "utf8" }).stdout?.trim() || "";
+const env = { ...process.env, CSC_IDENTITY_AUTO_DISCOVERY: "false", LH_BUILD_COMMIT: commit };
 function run(command, args) {
-	const result = spawnSync(command, args, { cwd: root, stdio: "inherit", env: { ...process.env, CSC_IDENTITY_AUTO_DISCOVERY: "false" } });
+	const result = spawnSync(command, args, { cwd: root, stdio: "inherit", env });
 	if (result.error) throw result.error;
 	if (result.status !== 0) process.exit(result.status ?? 1);
 }
@@ -15,5 +19,8 @@ run("npm", ["run", "build"]);
 run(process.execPath, ["scripts/smoke-provider-runtime.mjs"]);
 run(process.execPath, ["scripts/build-server.mjs"]);
 run(process.execPath, ["scripts/smoke-server.mjs"]);
-run("npx", ["--no-install", "electron-builder", "--config", "electron-builder.local.cjs", "--mac", ...(process.argv.includes("--dmg") ? ["dmg"] : []), `--${process.arch}`, ...(process.argv.includes("--dmg") ? [] : ["--dir"]), "--publish", "never"]);
+// --dmg: a drag-and-drop installer. --zip: the updater's payload (what CI
+// publishes). Neither: just the unpacked app under dist/local.
+const target = process.argv.includes("--dmg") ? ["dmg"] : process.argv.includes("--zip") ? ["zip"] : [];
+run("npx", ["--no-install", "electron-builder", "--config", "electron-builder.local.cjs", "--mac", ...target, `--${process.arch}`, ...(target.length ? [] : ["--dir"]), "--publish", "never"]);
 console.log("Local desktop build ready in dist/local. Open T3Learn.app.");

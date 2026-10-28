@@ -23,6 +23,7 @@ import { useServerEvent, useServerResync } from "@/components/server-events";
 import type { ChatListItem } from "@/src/core";
 import { kbdEventForAction } from "@/src/core";
 import { notifySettingsSaved } from "@/components/settings-signal";
+import { UpdatePill, type UpdateStatus } from "@/components/update-pill";
 
 /**
  * Toggleable sidebar — NOT a modal drawer: no backdrop, no focus theft. It
@@ -67,9 +68,13 @@ declare global {
 			/** The zoom truth (owner round 7): subscribes to "lh:zoom" pushes; returns unsubscribe. */
 			onZoom?: (cb: (factor: number) => void) => () => void;
 			getZoom?: () => Promise<number>;
-			/** Auto-update channel (Wave C, 2026-10-10): "lh:update-status" pushes once a staged update exists. */
-			onUpdateStatus?: (cb: (status: { status: string; version: string | null }) => void) => () => void;
+			/** Auto-update channel (Wave C, 2026-10-10; local edition 2026-10-28): "lh:update-status"
+			 *  pushes every status change; the three reads back the pill (components/update-pill.tsx). */
+			onUpdateStatus?: (cb: (status: UpdateStatus) => void) => () => void;
 			installUpdate?: () => void;
+			updateState?: () => Promise<UpdateStatus | null>;
+			checkForUpdate?: () => Promise<UpdateStatus>;
+			downloadUpdate?: () => Promise<UpdateStatus>;
 		};
 	}
 }
@@ -842,7 +847,7 @@ function SessionsSidebar() {
 					{/* Settings entry (settings-app wave): same row language as
 					    New session — quiet, bottom-pinned, opens the centered
 					    dialog (also mod+, in the keyboard registry). */}
-					<div className="flex flex-wrap gap-1 px-3 pb-3 pt-1">
+					<div className="flex flex-wrap items-center gap-1 px-3 pb-3 pt-1">
 						<ProgressButton />
 						<Hint label="Settings" action="open-settings" side="right">
 							<button
@@ -855,6 +860,10 @@ function SessionsSidebar() {
 								Settings
 							</button>
 						</Hint>
+						{/* App updates (owner, 2026-10-28): the right end of this row,
+						    where T3 Code keeps its update pill. Hidden until the shell
+						    has something to say (Electron only). */}
+						<UpdatePill />
 					</div>
 				</div>
 

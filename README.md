@@ -29,7 +29,7 @@ This checkout adds **Codex CLI** and **Claude Code** subscription connections al
 
 Attach images and selected PDF pages as lesson context. Use **Add handwritten thinking** in answer fields to transcribe your working into an editable draft before submitting. See [attachments and learning storage](docs/learning-data.md).
 
-Build your own macOS app with `npm ci` followed by `npm run desktop:local`. The app is written to `dist/local/mac-arm64/T3Learn.app` on Apple Silicon (`mac` on Intel). See [CLI setup and local macOS builds](docs/local-desktop.md) for details.
+Build your own macOS app with `npm ci` followed by `npm run desktop:local`. The app is written to `dist/local/mac-arm64/T3Learn.app` on Apple Silicon (`mac` on Intel). Every push to `main` also builds the Apple Silicon app on GitHub Actions and publishes it to the `local-latest` prerelease; an installed copy offers that build in its sidebar as **Update available**. See [CLI setup and local macOS builds](docs/local-desktop.md) for details.
 
 The **Progress** button beside Settings shows XP, levels, streaks, badges and knowledge-map counts without changing the learning system. See [learning data and private backups](docs/learning-data.md). Personal records and credentials do not belong in this public source repository.
 

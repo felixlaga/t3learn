@@ -51,6 +51,8 @@ npx electron-builder --linux --x64 --publish never
 
 The three jobs upload distinct updater feeds: `latest-mac.yml`, `latest.yml`, `latest-linux.yml`, with the matching ZIP/NSIS/AppImage/deb assets and blockmaps. **A partially populated draft is never fit to publish — and the final job enforces it mechanically.** The app uses the baked GitHub feed without a token: **the repository must be public before end users can download updates.** Making the repository public and publishing the release remain the owner's actions.
 
+`.github/workflows/local-build.yml` is the third workflow, for the unsigned **T3Learn** local edition only: on every push to main it runs the gates, builds the Apple Silicon app with `electron-builder.local.cjs`, and publishes the zip and its manifest to the rolling `local-latest` prerelease. That edition cannot use Squirrel.Mac (it is ad-hoc signed), so it updates through `electron/local-update.cjs` instead. Details in [local-desktop.md](local-desktop.md#updates).
+
 ### The verification job
 
 `verify` runs only on tag pushes (`needs: package`, so after **all three** packaging legs; manual rehearsals upload nothing and skip it). It checks out the tagged revision without persisting credentials and runs `scripts/verify-release.ts`. GitHub requires push access to list **draft** releases, so this job needs `contents: write` even though every API operation is GET-only. The token is exposed only to the release-list and feed-download steps, not dependency installation or the offline validator. The validator:

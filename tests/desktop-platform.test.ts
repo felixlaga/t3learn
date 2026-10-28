@@ -78,7 +78,7 @@ describe("desktop window chrome", () => {
 		runInNewContext(readFileSync(new URL("../electron/preload.cjs", import.meta.url), "utf8"), context);
 		assert.equal(bridge.platform, "win32");
 		assert.deepEqual(Object.keys(bridge).sort(), [
-			"chatgpt", "expandWindow", "getZoom", "installUpdate", "onUpdateStatus", "onZoom", "platform", "subscriptions",
+			"chatgpt", "checkForUpdate", "downloadUpdate", "expandWindow", "getZoom", "installUpdate", "onUpdateStatus", "onZoom", "platform", "subscriptions", "updateState",
 		]);
 		assert.deepEqual(Object.keys(bridge.subscriptions as object).sort(), ["cancel", "consent", "disconnect", "login", "onChange", "open", "respond", "retry", "status"]);
 	});
@@ -121,7 +121,7 @@ describe("workflow action versions", () => {
 	type Workflow = { jobs: Record<string, { steps: Step[] }> };
 	const yaml = require("js-yaml") as { load(source: string): Workflow };
 
-	for (const filename of ["ci.yml", "release.yml"]) {
+	for (const filename of ["ci.yml", "release.yml", "local-build.yml"]) {
 		it(`${filename} uses supported Action runtimes without changing the app's Node 26`, () => {
 			const workflow = yaml.load(readFileSync(new URL(`../.github/workflows/${filename}`, import.meta.url), "utf8"));
 			const expected = ["actions/checkout@v7", "actions/setup-node@v7"];

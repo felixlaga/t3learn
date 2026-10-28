@@ -19,7 +19,23 @@ npm run desktop:local -- --dmg
 
 The command builds Next's standalone server, runs payload smoke checks, and packages the Electron app for the current Mac's architecture. It uses the existing flat icon, requires no original-author signing certificate, Apple team, notary profile, or full Xcode 26 installation, and publishes nothing. The result is a local unsigned/unnotarized build, not a distributable signed release. If macOS blocks your own build, use System Settings → Privacy & Security → Open Anyway.
 
-The app is named **T3Learn** and retains its original data location at `~/Library/Application Support/LearnHarness Local/`. It does not consume the upstream automatic-update feed. Rebuild this checkout to update it. The original `desktop:dist` release command is unchanged.
+The app is named **T3Learn** and retains its original data location at `~/Library/Application Support/LearnHarness Local/`. It does not consume the upstream automatic-update feed. It has its own, described next. The original `desktop:dist` release command is unchanged.
+
+## Updates
+
+Pushing to `main` is the release step. The `T3Learn local build` workflow (`.github/workflows/local-build.yml`) runs the gates, builds the unsigned Apple Silicon app on a macOS runner, smokes the packaged server, and publishes the zip plus a `local-latest.json` manifest to the rolling **`local-latest`** prerelease on the fork. `scripts/publish-local-build.mjs` writes the manifest (version, build number, commit, zip URL, size, sha512) and moves the tag.
+
+The installed app checks that manifest at launch and every 24 hours (`electron/local-update.cjs`). Builds compare by build number, which is the workflow's run number. A hand build from `npm run desktop:local` is build 0, so the next CI build always counts as newer.
+
+In the app, the pill sits at the right end of the sidebar's bottom row, next to Settings:
+
+1. **Update available** appears. Click it to download. The pill shows the percentage.
+2. The zip is checked against its sha512 and unpacked with `ditto`.
+3. **Restart to update** appears. Click it. The app quits, a small shell helper swaps `T3Learn.app` in place, clears the quarantine flag, and opens the new copy. If the swap fails, the helper puts the old app back.
+
+**Check for Updates…** in the app menu does the same check by hand. The helper logs to `~/Library/Application Support/LearnHarness Local/logs/update.log`.
+
+The first copy with this updater must be installed by hand once: build it or download the zip from the `local-latest` release, move `T3Learn.app` to `~/Applications`, and run `xattr -dr com.apple.quarantine ~/Applications/T3Learn.app` if macOS blocks it. After that it updates itself. `LH_UPDATE_FEED=<url>` at launch points the updater at another manifest for a drill.
 
 ## Connect your subscriptions
 
