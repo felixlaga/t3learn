@@ -7,7 +7,7 @@ import { MenuShell } from "@/components/menu-shell";
 import { DeleteSessionDialog } from "@/components/delete-session-dialog";
 import { ProgressButton } from "@/components/progress-dialog";
 import type { ChatDeleteMode } from "@/src/core";
-import { DumbbellIcon, PanelLeftCloseIcon, PanelLeftOpenIcon, PlusIcon, SearchIcon, SettingsIcon } from "lucide-react";
+import { ChevronDownIcon, ChevronUpIcon, DumbbellIcon, PanelLeftCloseIcon, PanelLeftOpenIcon, PlusIcon, SearchIcon, SettingsIcon, WaypointsIcon } from "lucide-react";
 import { ActivitySection } from "@/components/activity-dock";
 import { CoverageMenuBlock } from "@/components/extraction-coverage";
 import { LhMark } from "@/components/lh-mark";
@@ -24,6 +24,8 @@ import type { ChatListItem } from "@/src/core";
 import { kbdEventForAction } from "@/src/core";
 import { notifySettingsSaved } from "@/components/settings-signal";
 import { UpdatePill, type UpdateStatus } from "@/components/update-pill";
+import { FOOTER_ICON_CLASS } from "@/components/footer-icon";
+import { timeAgo } from "@/components/time-ago";
 
 /**
  * Toggleable sidebar — NOT a modal drawer: no backdrop, no focus theft. It
@@ -238,27 +240,11 @@ function SessionStatus({ busy }: { busy: boolean }) {
 	return <BrailleSpinner />;
 }
 
-/** Compact "how long ago": "just now", "5m ago", "3h ago", "2d ago",
- *  then a plain date. How long a session has been WAITING matters more
- *  than an absolute timestamp. Beyond a week the date renders ISO
- *  (YYYY-MM-DD, zero-padded) — the international standard: unambiguous
- *  in any locale and it sorts (owner, typography round 5; the old
- *  M/D/YYYY was the US convention. A user-locale setting can come later
- *  — trivial, a format function swap). Pure — exported for tests. */
-export function timeAgo(iso: string, now = new Date()): string {
-	const ms = now.getTime() - new Date(iso).getTime();
-	if (ms < 60_000) return "just now";
-	const min = Math.floor(ms / 60_000);
-	if (min < 60) return `${min}m ago`;
-	const h = Math.floor(min / 60);
-	if (h < 24) return `${h}h ago`;
-	const d = Math.floor(h / 24);
-	if (d < 7) return `${d}d ago`;
-	const date = new Date(iso);
-	const mm = String(date.getMonth() + 1).padStart(2, "0");
-	const dd = String(date.getDate()).padStart(2, "0");
-	return `${date.getFullYear()}-${mm}-${dd}`;
-}
+/** timeAgo lives in components/time-ago.ts since the backup wave
+ *  (2026-10-28) — the Backup section needs it too, and importing it from
+ *  here would cycle (sidebar → settings dialog → backup section → sidebar).
+ *  Re-exported so the render tests keep their import. */
+export { timeAgo };
 
 /** The row's second line: the state when a state exists (waiting/working),
  *  otherwise just how long ago. The message count is DROPPED (owner,
@@ -301,6 +287,7 @@ export function SessionRow({
 			type="button"
 			onClick={onOpen}
 			onContextMenu={onContextMenu}
+			data-session-row=""
 			data-testid={kbdSelected ? "session-row-kbd" : "session-row"}
 			className={cn(
 				"relative mb-0.5 flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left transition-colors hover:bg-accent",
@@ -378,6 +365,42 @@ export function RenameRow({ chat, onCommit, onCancel }: { chat: ChatListItem; on
 	);
 }
 
+/** THE SETTLED SHELF HEADER (owner, 2026-10-28 — T3 Code's shelf): the
+ *  divider between the active list and the sessions the learner put
+ *  away. Count in the label, a hairline, a chevron that points where the
+ *  rows will appear (up while collapsed, the shelf sits at the bottom).
+ *  Pure — exported for render tests. */
+export function SettledShelfHeader({ count, open, onToggle }: { count: number; open: boolean; onToggle: () => void }) {
+	return (
+		<button
+			type="button"
+			data-testid="settled-shelf"
+			aria-expanded={open}
+			onClick={onToggle}
+			className="mb-1 mt-2 flex w-full items-center gap-2 rounded-md px-3 py-1.5 text-xs text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+		>
+			<span className="shrink-0">Settled ({count})</span>
+			<span aria-hidden className="h-px flex-1 bg-border" />
+			{open ? <ChevronDownIcon className="size-3.5 shrink-0" /> : <ChevronUpIcon className="size-3.5 shrink-0" />}
+		</button>
+	);
+}
+
+/** Pure: split the list into the active rows and the settled shelf
+ *  (owner, 2026-10-28). Without a query the active rows order by
+ *  activity (newest first) and the shelf by when each was settled; with a
+ *  query the search's score order is kept in both. Exported for tests. */
+export function partitionSettled<T extends { settledAt?: string; updatedAt: string }>(list: T[], searching: boolean): { active: T[]; settled: T[] } {
+	const active = list.filter((c) => !c.settledAt);
+	const settled = list.filter((c) => c.settledAt);
+	if (!searching) {
+		active.sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
+		settled.sort((a, b) => b.settledAt!.localeCompare(a.settledAt!));
+	}
+	return { active, settled };
+}
+const SETTLED_OPEN_KEY = "lh:settled-open";
+
 /** The three-way kind filter (practice sessions, owner 2026-10-04):
  *  Teaching / All / Practice — a client-side filter over the same
  *  snapshot, persisted in localStorage, defaulting to All. */
@@ -396,6 +419,18 @@ function SessionsSidebar() {
 	const setFilter = useCallback((f: SessionKindFilter) => {
 		setKindFilter(f);
 		window.localStorage.setItem(KIND_FILTER_KEY, f);
+	}, []);
+	/* The settled shelf (owner, 2026-10-28): collapsed by default, the
+	   choice persists per device; a search opens it for its matches. */
+	const [settledOpen, setSettledOpen] = useState(false);
+	useEffect(() => {
+		setSettledOpen(window.localStorage.getItem(SETTLED_OPEN_KEY) === "1");
+	}, []);
+	const toggleShelf = useCallback(() => {
+		setSettledOpen((v) => {
+			window.localStorage.setItem(SETTLED_OPEN_KEY, v ? "0" : "1");
+			return !v;
+		});
 	}, []);
 	const pathname = usePathname();
 	const router = useRouter();
@@ -426,6 +461,12 @@ function SessionsSidebar() {
 			.sort((a, b) => b.score - a.score)
 			.map((r) => r.c);
 	}, [chats, query, kindFilter]);
+	const searching = query.trim() !== "";
+	const shelfOpen = settledOpen || searching;
+	const { active, settled } = useMemo(() => partitionSettled(shown ?? [], searching), [shown, searching]);
+	/* The rows a keyboard walk can land on: the active list, then the
+	   shelf's rows while it is open — the DOM order. */
+	const rows = useMemo(() => (shelfOpen ? [...active, ...settled] : active), [active, settled, shelfOpen]);
 
 	const refreshInFlightRef = useRef(false);
 	const refresh = useCallback(async () => {
@@ -600,6 +641,37 @@ function SessionsSidebar() {
 		}
 	}, []);
 
+	// Settle / un-settle (owner, 2026-10-28): patch the snapshot at once
+	// (settle stamps, un-settle clears and bumps updatedAt so the row
+	// returns to the top — the store's own rule), PUT, and let the
+	// chats-changed refetch land the durable stamps. A failed PUT refetches
+	// so the server's truth wins back.
+	const setSettled = useCallback(
+		async (id: string, settled: boolean) => {
+			setCtxChatId(null);
+			const now = new Date().toISOString();
+			setChats((prev) =>
+				prev
+					? prev.map((c) =>
+							c.id !== id ? c : settled ? { ...c, settledAt: c.settledAt ?? now } : { ...c, settledAt: undefined, updatedAt: now },
+						)
+					: prev,
+			);
+			try {
+				const res = await fetch(`/api/chats/${id}/settled`, {
+					method: "PUT",
+					headers: { "Content-Type": "application/json" },
+					body: JSON.stringify({ settled }),
+				});
+				if (!res.ok) throw new Error(`settle failed: ${res.status}`);
+			} catch (err) {
+				console.error("settle failed:", err);
+				void refresh();
+			}
+		},
+		[refresh],
+	);
+
 	// Delete success: patch the list instantly (the poll is the backstop),
 	// navigate home if the open session died (the chat view unmounts —
 	// drafts die with it, no orphan bubbles), and announce the graph
@@ -630,7 +702,7 @@ function SessionsSidebar() {
 	// buttons, so the index matches).
 	useEffect(() => {
 		if (kbdIndex === null) return;
-		listRef.current?.querySelectorAll("button")[kbdIndex]?.scrollIntoView({ block: "nearest" });
+		listRef.current?.querySelectorAll("[data-session-row]")[kbdIndex]?.scrollIntoView({ block: "nearest" });
 	}, [kbdIndex]);
 
 	useEffect(() => {
@@ -639,6 +711,30 @@ function SessionsSidebar() {
 		// Opening + navigation refetch; while open, the events channel owns
 		// freshness (S6) — no interval, nothing standing.
 	}, [open, pathname, refresh]);
+
+	/** One list row at walk index i (the active list and the shelf share
+	 *  one index space, in DOM order). */
+	const row = (c: ChatListItem, i: number) =>
+		renamingId === c.id ? (
+			<RenameRow
+				key={c.id}
+				chat={c}
+				onCommit={(next) => void commitRename(c.id, next)}
+				onCancel={() => setRenamingId(null)}
+			/>
+		) : (
+			<SessionRow
+				key={c.id}
+				chat={c}
+				active={pathname === `/chat/${c.id}`}
+				kbdSelected={i === kbdIndex}
+				onOpen={() => {
+					setKbdIndex(null);
+					router.push(`/chat/${c.id}`);
+				}}
+				onContextMenu={(e) => openContext(e, c)}
+			/>
+		);
 
 	return (
 		<aside
@@ -749,7 +845,7 @@ function SessionsSidebar() {
 								}
 								// Modified keys belong to the surface (⇧↵ etc.).
 								if (e.metaKey || e.ctrlKey || e.altKey || e.shiftKey) return;
-								const n = shown?.length ?? 0;
+								const n = rows.length;
 								if (n === 0) return;
 								if (e.key === "ArrowDown" || e.key === "ArrowUp") {
 									// The rows move, not the caret.
@@ -761,7 +857,7 @@ function SessionsSidebar() {
 									return;
 								}
 								if (e.key === "Enter") {
-									const target = shown![kbdIndex !== null && kbdIndex < n ? kbdIndex : 0];
+									const target = rows[kbdIndex !== null && kbdIndex < n ? kbdIndex : 0];
 									if (!target) return;
 									e.preventDefault();
 									router.push(`/chat/${target.id}`);
@@ -812,57 +908,60 @@ function SessionsSidebar() {
 							{query.trim() ? "No sessions match." : "No sessions yet."}
 						</div>
 					) : (
-						shown.map((c, i) =>
-							renamingId === c.id ? (
-								<RenameRow
-									key={c.id}
-									chat={c}
-									onCommit={(next) => void commitRename(c.id, next)}
-									onCancel={() => setRenamingId(null)}
-								/>
-							) : (
-								<SessionRow
-									key={c.id}
-									chat={c}
-									active={pathname === `/chat/${c.id}`}
-									kbdSelected={i === kbdIndex}
-									onOpen={() => {
-										setKbdIndex(null);
-										router.push(`/chat/${c.id}`);
-									}}
-									onContextMenu={(e) => openContext(e, c)}
-								/>
-							),
-						)
+						<>
+							{active.length === 0 && (
+								<div className="px-2 py-4 text-xs text-muted-foreground">
+									{searching ? "No active sessions match." : "No active sessions."}
+								</div>
+							)}
+							{active.map((c, i) => row(c, i))}
+							{/* The settled shelf (owner, 2026-10-28): the sessions the
+							    learner put away, under a collapsible header at the
+							    bottom of the list. Its rows join the keyboard walk
+							    only while it is open. */}
+							{settled.length > 0 && <SettledShelfHeader count={settled.length} open={shelfOpen} onToggle={toggleShelf} />}
+							{shelfOpen && settled.map((c, i) => row(c, active.length + i))}
+						</>
 					)}
 				</div>
 
-					{/* Background agents (owner, sidebar round): the section is
-					    ALWAYS here — empty means empty (the header sits alone); it
-					    populates and grows when processes run. The session list is
-					    flex-1, so this pins to the bottom. Sidebar closed = the
+					{/* Background agents (owner, sidebar round; present only while
+					    something runs since 2026-10-28): one blob per running
+					    background process, above the icon row. The session list
+					    is flex-1, so this pins to the bottom. Sidebar closed = the
 					    learner opted out (no ambient signal, user decision). */}
 					<ActivitySection />
 
-					{/* Settings entry (settings-app wave): same row language as
-					    New session — quiet, bottom-pinned, opens the centered
-					    dialog (also mod+, in the keyboard registry). */}
-					<div className="flex flex-wrap items-center gap-1 px-3 pb-3 pt-1">
-						<ProgressButton />
-						<Hint label="Settings" action="open-settings" side="right">
+					{/* THE ICON ROW (owner, 2026-10-28): T3 Code's bottom row —
+					    icon-only controls, labels in the tooltips. Settings (also
+					    mod+, in the keyboard registry), the graph view (⌘G, the
+					    logo's destination), Progress, and at the right end the
+					    update button (desktop only). */}
+					<div className="flex items-center gap-1 px-3 pb-3 pt-2" data-testid="sidebar-footer">
+						<Hint label="Settings" action="open-settings" side="top">
 							<button
 								type="button"
 								onClick={() => openSettings()}
 								data-testid="settings-entry"
-								className="flex items-center gap-1.5 rounded-md px-2 py-1.5 text-xs uppercase tracking-wider text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+								aria-label="Settings"
+								className={FOOTER_ICON_CLASS}
 							>
-								<SettingsIcon className="size-3" />
-								Settings
+								<SettingsIcon className="size-4" />
 							</button>
 						</Hint>
-						{/* App updates (owner, 2026-10-28): the right end of this row,
-						    where T3 Code keeps its update pill. Hidden until the shell
-						    has something to say (Electron only). */}
+						<Hint label="Graph view" action="jump-graph" side="top">
+							<button
+								type="button"
+								onClick={() => router.push("/")}
+								data-testid="graph-entry"
+								aria-label="Graph view"
+								aria-current={pathname === "/" ? "page" : undefined}
+								className={cn(FOOTER_ICON_CLASS, pathname === "/" && "bg-accent text-foreground")}
+							>
+								<WaypointsIcon className="size-4" />
+							</button>
+						</Hint>
+						<ProgressButton />
 						<UpdatePill />
 					</div>
 				</div>
@@ -894,6 +993,20 @@ function SessionsSidebar() {
 							className="flex items-center rounded-lg px-2.5 py-1.5 text-left text-foreground transition-colors hover:bg-accent"
 						>
 							Rename
+						</button>
+						{/* Settle / Un-settle (owner, 2026-10-28): the shelf's one
+						    control besides dragging-free parity with T3 Code — the
+						    wording flips with the row's state. */}
+						<button
+							type="button"
+							data-testid="ctx-settle"
+							onClick={() => {
+								const target = chats?.find((c) => c.id === ctxChatId);
+								if (target) void setSettled(target.id, !target.settledAt);
+							}}
+							className="flex items-center rounded-lg px-2.5 py-1.5 text-left text-foreground transition-colors hover:bg-accent"
+						>
+							{chats?.find((c) => c.id === ctxChatId)?.settledAt ? "Un-settle" : "Settle"}
 						</button>
 						{/* Export as Markdown (owner, release polish 2026-10-06): the
 					    session-markdown engine's user-facing debut — same-origin

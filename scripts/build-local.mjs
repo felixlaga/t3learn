@@ -19,8 +19,10 @@ run("npm", ["run", "build"]);
 run(process.execPath, ["scripts/smoke-provider-runtime.mjs"]);
 run(process.execPath, ["scripts/build-server.mjs"]);
 run(process.execPath, ["scripts/smoke-server.mjs"]);
-// --dmg: a drag-and-drop installer. --zip: the updater's payload (what CI
-// publishes). Neither: just the unpacked app under dist/local.
-const target = process.argv.includes("--dmg") ? ["dmg"] : process.argv.includes("--zip") ? ["zip"] : [];
+// --dmg: a drag-and-drop installer (CI publishes it under the stable name
+// T3Learn.dmg for the website link). --zip: the updater's payload. Both
+// flags may combine (CI does). Neither: just the unpacked app under
+// dist/local.
+const target = [...(process.argv.includes("--zip") ? ["zip"] : []), ...(process.argv.includes("--dmg") ? ["dmg"] : [])];
 run("npx", ["--no-install", "electron-builder", "--config", "electron-builder.local.cjs", "--mac", ...target, `--${process.arch}`, ...(target.length ? [] : ["--dir"]), "--publish", "never"]);
 console.log("Local desktop build ready in dist/local. Open T3Learn.app.");

@@ -21,21 +21,37 @@ The command builds Next's standalone server, runs payload smoke checks, and pack
 
 The app is named **T3Learn** and retains its original data location at `~/Library/Application Support/LearnHarness Local/`. It does not consume the upstream automatic-update feed. It has its own, described next. The original `desktop:dist` release command is unchanged.
 
+## Download
+
+Every build on the `local-latest` prerelease also carries a DMG under one fixed name, so a website link never changes:
+
+```text
+https://github.com/felixlaga/t3learn/releases/download/local-latest/T3Learn.dmg
+```
+
+Open the DMG and drag T3Learn to Applications. The app is unsigned (no Apple Developer ID), so macOS blocks the first open once: right-click T3Learn.app → **Open**, or allow it under **System Settings → Privacy & Security → Open Anyway**. Only an Apple Developer ID certificate and notarization would remove that step. After the first open the app updates itself from the same release.
+
 ## Updates
 
-Pushing to `main` is the release step. The `T3Learn local build` workflow (`.github/workflows/local-build.yml`) runs the gates, builds the unsigned Apple Silicon app on a macOS runner, smokes the packaged server, and publishes the zip plus a `local-latest.json` manifest to the rolling **`local-latest`** prerelease on the fork. `scripts/publish-local-build.mjs` writes the manifest (version, build number, commit, zip URL, size, sha512) and moves the tag.
+Pushing to `main` is the release step. The `T3Learn local build` workflow (`.github/workflows/local-build.yml`) runs the gates, builds the unsigned Apple Silicon app on a macOS runner, smokes the packaged server, and publishes the zip, the DMG and a `local-latest.json` manifest to the rolling **`local-latest`** prerelease on the fork. `scripts/publish-local-build.mjs` writes the manifest (version, build number, commit, zip URL, size, sha512, plus the DMG as `installer`) and moves the tag.
 
 The installed app checks that manifest at launch and every 24 hours (`electron/local-update.cjs`). Builds compare by build number, which is the workflow's run number. A hand build from `npm run desktop:local` is build 0, so the next CI build always counts as newer.
 
-In the app, the pill sits at the right end of the sidebar's bottom row, next to Settings:
+In the app, the round update button sits at the right end of the sidebar's bottom row (the icon row: Settings, Graph view, Progress, then the update button, like T3 Code's). Its corner badge says the state; the tooltip spells it out:
 
-1. **Update available** appears. Click it to download. The pill shows the percentage.
-2. The zip is checked against its sha512 and unpacked with `ditto`.
-3. **Restart to update** appears. Click it. The app quits, a small shell helper swaps `T3Learn.app` in place, clears the quarantine flag, and opens the new copy. If the swap fails, the helper puts the old app back.
+1. **Up to date** (a check): click to check again.
+2. **Update available** (a down arrow): click to download. The arrow spins while the zip streams in; the tooltip shows the percentage.
+3. The zip is checked against its sha512 and unpacked with `ditto`.
+4. **Restart to update** (a check in the accent): click it. The app quits, a small shell helper swaps `T3Learn.app` in place, clears the quarantine flag, and opens the new copy. If the swap fails, the helper puts the old app back.
+5. **Update failed** (amber): click to retry the step that failed.
 
 **Check for Updates…** in the app menu does the same check by hand. The helper logs to `~/Library/Application Support/LearnHarness Local/logs/update.log`.
 
-The first copy with this updater must be installed by hand once: build it or download the zip from the `local-latest` release, move `T3Learn.app` to `~/Applications`, and run `xattr -dr com.apple.quarantine ~/Applications/T3Learn.app` if macOS blocks it. After that it updates itself. `LH_UPDATE_FEED=<url>` at launch points the updater at another manifest for a drill.
+The first copy must be installed by hand once: the DMG above, or build it, or unzip the release zip and move `T3Learn.app` to Applications. If macOS blocks it, use Open Anyway as described under Download (or `xattr -dr com.apple.quarantine` on the bundle). After that it updates itself.
+
+## Sessions: the Settled shelf
+
+Right-click a session in the sidebar and choose **Settle** to put it away. Settled sessions live under a collapsed **Settled (N)** shelf at the bottom of the list, newest settled first; click the shelf to open it (the choice is remembered on this device, and a search opens it for its matches). **Un-settle** brings a session back to the top of the active list. Nothing settles on its own. `LH_UPDATE_FEED=<url>` at launch points the updater at another manifest for a drill.
 
 ## Connect your subscriptions
 

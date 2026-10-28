@@ -2,9 +2,10 @@ name: T3Learn local build
 
 # The local edition's release step (owner, 2026-10-28): every push to main
 # that passes the gates becomes an unsigned Apple Silicon T3Learn.app on the
-# rolling `local-latest` prerelease. Installed copies read its manifest
-# (electron/local-update.cjs) and offer the build in the sidebar. Manual
-# runs build and smoke the app but publish nothing.
+# rolling `local-latest` prerelease: the zip the installed app updates from
+# (electron/local-update.cjs reads the manifest and offers the build in the
+# sidebar) and the DMG under the stable name T3Learn.dmg, the link for a
+# website. Manual runs build and smoke the app but publish nothing.
 on:
   push:
     branches: [main]
@@ -52,12 +53,12 @@ jobs:
           node-version: "26"
           cache: npm
       - run: npm ci
-      - name: Build the unsigned T3Learn zip
+      - name: Build the unsigned T3Learn zip and DMG
         env:
           LH_BUILD_NUMBER: ${{ github.run_number }}
           LH_BUILD_COMMIT: ${{ github.sha }}
           LH_LOCAL_UPDATE_REPO: ${{ github.repository }}
-        run: node scripts/build-local.mjs --zip
+        run: node scripts/build-local.mjs --zip --dmg
       - name: Boot the packaged server in the app's own Electron
         run: node scripts/smoke-server.mjs --electron
       - name: Initialize packaged providers offline (packaged Electron Node)

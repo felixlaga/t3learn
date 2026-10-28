@@ -44,6 +44,15 @@ interface KeysResponse {
 	providers?: ProviderKeyInfo[];
 }
 
+/** Which Providers group each curated tool key renders under. A key the
+ *  map does not name lands under Search (the catalog's historical default). */
+const TOOL_GROUP: Record<string, "Dictation" | "Search" | "Backup"> = {
+	DEEPGRAM_API_KEY: "Dictation",
+	TAVILY_API_KEY: "Search",
+	BRAVE_API_KEY: "Search",
+	GITHUB_BACKUP_TOKEN: "Backup",
+};
+
 /** The curated tools group, pinned by id (the catalog owns the copy;
  *  these ids are the contract). Derived from the catalog (search wave,
  *  2026-09-20: the Google CSE pair retired, Tavily + Brave joined) — the
@@ -459,8 +468,11 @@ export function KeysSection({
 				<SubscriptionConnections />
 			</SettingsGroup>
 
-			{(["Dictation", "Search"] as const).map((label) => <SettingsGroup key={label} label={label} testid={label === "Dictation" ? "group-dictation" : "group-search"}>
-				{toolRows.filter((status) => label === "Dictation" ? status.id === "DEEPGRAM_API_KEY" : status.id !== "DEEPGRAM_API_KEY").map((status) => (
+			{/* The curated tool keys by purpose: dictation, the search engines,
+			    the backup token (backup wave, 2026-10-28 — Settings → Backup
+			    signs in and stores it; this row is the by-hand way). */}
+			{(["Dictation", "Search", "Backup"] as const).map((label) => <SettingsGroup key={label} label={label} testid={`group-${label.toLowerCase()}`}>
+				{toolRows.filter((status) => TOOL_GROUP[status.id] === label).map((status) => (
 					<KeyTableRow
 						key={status.id}
 						label={status.info?.label ?? status.id}

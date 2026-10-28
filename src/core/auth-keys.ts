@@ -48,6 +48,12 @@ export const AUTH_KEYS: readonly AuthKeyInfo[] = [
 		description: "Web-search engine for the researcher sub-agent — the alternative to Tavily. Setting the key activates it.",
 		docsUrl: "https://brave.com/search/api/",
 	},
+	{
+		id: "GITHUB_BACKUP_TOKEN",
+		label: "GitHub backup",
+		description: "Token for the automatic private backup of your learning records. Settings → Backup signs in and stores one for you; paste one here only if you prefer (classic token with the repo scope, or a fine-grained token with Administration and Contents write on all repositories).",
+		docsUrl: "https://github.com/settings/tokens",
+	},
 ] as const;
 
 const AUTH_KEY_IDS: ReadonlySet<string> = new Set(AUTH_KEYS.map((k) => k.id));
@@ -163,6 +169,9 @@ export function validateKeyShape(id: string, rawValue: string): KeyShapeResult {
 			return nonEmpty(20);
 		case "DEEPGRAM_API_KEY":
 			// No public format — the length floor only catches truncated pastes.
+			return nonEmpty(20);
+		case "GITHUB_BACKUP_TOKEN":
+			// ghp_… / gho_… / github_pat_… — the families differ; paste hygiene only.
 			return nonEmpty(20);
 		default:
 			return { ok: false, error: `unknown key "${id}" (supported: ${[...AUTH_KEY_IDS].join(", ")})` };

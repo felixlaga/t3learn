@@ -7,11 +7,17 @@
  *   node scripts/publish-local-build.mjs --dist dist/local --repo owner/name \
  *     --tag local-latest --build <run number> --commit <sha>
  *
- * Steps: find the one zip in --dist, hash it, write local-latest.json next
- * to it, point the tag at the commit, create the prerelease if missing,
- * drop zips from older versions, upload zip + manifest (clobbering), and
- * refresh the release notes. Needs `gh` with a token that can write
- * contents (the workflow's GITHUB_TOKEN).
+ * Steps: find the one zip in --dist (and the one DMG when the build made
+ * one), hash them, write local-latest.json next to them, point the tag at
+ * the commit, create the prerelease if missing, drop zips and DMGs from
+ * older builds, upload zip + DMG + manifest (clobbering), and refresh the
+ * release notes. Needs `gh` with a token that can write contents (the
+ * workflow's GITHUB_TOKEN).
+ *
+ * The DMG keeps one name across versions (electron-builder.local.cjs sets
+ * dmg.artifactName = T3Learn.dmg), so the website link
+ * https://github.com/<repo>/releases/download/local-latest/T3Learn.dmg
+ * never changes. The manifest lists it as the platform's `installer`.
  */
 import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
@@ -21,8 +27,11 @@ import { fileURLToPath } from "node:url";
 
 export const MANIFEST_NAME = "local-latest.json";
 
-/** The feed document. One asset per platform key (process.platform-process.arch). */
-export function manifestFor({ version, build, commit, builtAt, notes, repo, tag, platformKey, zipName, size, sha512 }) {
+/** The feed document. One asset per platform key (process.platform-process.arch);
+ *  `installer` (the DMG, for humans) rides next to it when the build made one.
+ *  The updater reads only name/url/sha512/size and ignores the rest. */
+export function manifestFor({ version, build, commit, builtAt, notes, repo, tag, platformKey, zipName, size, sha512, installer = null }) {
+	const download = (name) => `https://github.com/${repo}/releases/download/${tag}/${name}`;
 	return {
 		edition: "t3learn-local",
 		version,
@@ -33,9 +42,10 @@ export function manifestFor({ version, build, commit, builtAt, notes, repo, tag,
 		assets: {
 			[platformKey]: {
 				name: zipName,
-				url: `https://github.com/${repo}/releases/download/${tag}/${zipName}`,
+				url: download(zipName),
 				size,
 				sha512,
+				...(installer ? { installer: { name: installer.name, url: download(installer.name), size: installer.size, sha512: installer.sha512 } } : {}),
 			},
 		},
 	};
@@ -72,15 +82,19 @@ export async function publish(options) {
 	const zipPath = path.join(dist, zipName);
 	const size = fs.statSync(zipPath).size;
 	const sha512 = sha512Of(zipPath);
+	const dmgs = fs.readdirSync(dist).filter((name) => name.endsWith(".dmg"));
+	if (dmgs.length > 1) throw new Error(`expected at most one dmg in ${dist}, found ${dmgs.length}: ${dmgs.join(", ")}`);
+	const dmgPath = dmgs.length === 1 ? path.join(dist, dmgs[0]) : null;
+	const installer = dmgPath ? { name: dmgs[0], size: fs.statSync(dmgPath).size, sha512: sha512Of(dmgPath) } : null;
 	const version = options.version ?? JSON.parse(fs.readFileSync(path.resolve(dist, "..", "..", "package.json"), "utf8")).version;
 
 	const subject = run("git", ["log", "-1", "--format=%s", commit]);
 	const notes = subject.status === 0 ? subject.stdout.trim() : "";
 	const builtAt = (options.now ?? (() => new Date()))().toISOString();
-	const manifest = manifestFor({ version, build, commit, builtAt, notes, repo, tag, platformKey, zipName, size, sha512 });
+	const manifest = manifestFor({ version, build, commit, builtAt, notes, repo, tag, platformKey, zipName, size, sha512, installer });
 	const manifestPath = path.join(dist, MANIFEST_NAME);
 	fs.writeFileSync(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`);
-	log(`manifest: ${zipName} (${size} bytes) build ${build} at ${commit.slice(0, 7)}`);
+	log(`manifest: ${zipName} (${size} bytes)${installer ? ` + ${installer.name} (${installer.size} bytes)` : ""} build ${build} at ${commit.slice(0, 7)}`);
 
 	// The tag follows main: force it onto this commit (create it the first time).
 	const moved = run("gh", ["api", "-X", "PATCH", `repos/${repo}/git/refs/tags/${tag}`, "-f", `sha=${commit}`, "-F", "force=true"]);
@@ -97,8 +111,9 @@ export async function publish(options) {
 		`Unsigned Apple Silicon build of \`main\` at ${commit}.`,
 		notes ? `Latest change: ${notes}` : "",
 		"",
-		"Installed copies update themselves from this release (sidebar → Update available).",
-		"First install: unzip, move T3Learn.app to Applications, then run `xattr -dr com.apple.quarantine ~/Applications/T3Learn.app` once.",
+		installer ? `Download: [${installer.name}](${manifest.assets[platformKey].installer.url}) (drag T3Learn to Applications).` : "",
+		"Installed copies update themselves from this release (sidebar → the update button).",
+		"First open: macOS blocks unsigned apps once. Right-click T3Learn.app → Open, or allow it under System Settings → Privacy & Security → Open Anyway.",
 	].filter((line, i, all) => line !== "" || all[i - 1] !== "").join("\n");
 
 	const view = run("gh", ["release", "view", tag, "--repo", repo, "--json", "assets"]);
@@ -109,7 +124,8 @@ export async function publish(options) {
 	} else {
 		const assets = JSON.parse(view.stdout || "{}").assets ?? [];
 		for (const asset of assets) {
-			if (asset.name.endsWith(".zip") && asset.name !== zipName) {
+			const stale = (asset.name.endsWith(".zip") && asset.name !== zipName) || (asset.name.endsWith(".dmg") && asset.name !== installer?.name);
+			if (stale) {
 				const removed = run("gh", ["release", "delete-asset", tag, asset.name, "--repo", repo, "--yes"]);
 				if (removed.status !== 0) throw new Error(`could not remove stale asset ${asset.name}: ${removed.stderr}`);
 				log(`removed stale ${asset.name}`);
@@ -119,9 +135,9 @@ export async function publish(options) {
 		if (edited.status !== 0) throw new Error(`could not update release ${tag}: ${edited.stderr}`);
 	}
 
-	const uploaded = run("gh", ["release", "upload", tag, zipPath, manifestPath, "--repo", repo, "--clobber"]);
+	const uploaded = run("gh", ["release", "upload", tag, zipPath, ...(dmgPath ? [dmgPath] : []), manifestPath, "--repo", repo, "--clobber"]);
 	if (uploaded.status !== 0) throw new Error(`upload failed: ${uploaded.stderr}`);
-	log(`uploaded ${zipName} and ${MANIFEST_NAME} to ${tag}`);
+	log(`uploaded ${zipName}${installer ? `, ${installer.name}` : ""} and ${MANIFEST_NAME} to ${tag}`);
 	return manifest;
 }
 

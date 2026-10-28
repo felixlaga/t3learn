@@ -181,6 +181,27 @@ function renameChat(id: string, title: string): ChatRecord {
 	return record;
 }
 
+/** Settle / un-settle (owner, 2026-10-28): a list-shape write, like a
+ *  rename. Settling keeps updatedAt (the shelf orders by settledAt, and
+ *  "how long ago" stays truthful); settling an already-settled session
+ *  keeps its original stamp. Un-settling bumps updatedAt — the session
+ *  returns to the top of the active list, T3 Code's rule. */
+function setSettled(id: string, settled: boolean): ChatRecord {
+	const record = getChat(id);
+	if (!record) throw new Error(`Chat not found: ${id}`);
+	if (settled) {
+		if (record.settledAt) return record; // already settled — keep the stamp, write nothing
+		record.settledAt = new Date().toISOString();
+	} else {
+		if (!record.settledAt) return record; // already active — nothing to write, nothing to announce
+		delete record.settledAt;
+		record.updatedAt = new Date().toISOString();
+	}
+	writeChat(record);
+	emit("chats-changed", {});
+	return record;
+}
+
 /** Delete the session record file entirely (session-deletion wave 6,
  *  owner 2026-09-22). False when the id is unknown — the route turns that
  *  into a 404. The record's graph traces and jobs are the route's
@@ -213,6 +234,7 @@ export const chatStore: ChatStore = {
 	saveTree,
 	saveSettings,
 	renameChat,
+	setSettled,
 	deleteChat,
 	appendTurnUsage,
 	appendExtractionUsage,

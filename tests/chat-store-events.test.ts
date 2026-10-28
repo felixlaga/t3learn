@@ -44,6 +44,25 @@ describe("chat store events (S6: the silence law)", () => {
 		off();
 	});
 
+	it("setSettled announces on a real change and stays silent when nothing moves (owner, 2026-10-28)", () => {
+		let announces = 0;
+		const off = subscribe((e) => {
+			if (e.type === "chats-changed") announces++;
+		});
+		const chat = chatStore.createChat("Settle fixture");
+		announces = 0;
+		chatStore.setSettled(chat.id, true);
+		assert.equal(announces, 1, "settling is a list-shape write");
+		chatStore.setSettled(chat.id, true);
+		assert.equal(announces, 1, "settling twice keeps the stamp and announces nothing");
+		chatStore.setSettled(chat.id, false);
+		assert.equal(announces, 2, "un-settling announces");
+		chatStore.setSettled(chat.id, false);
+		assert.equal(announces, 2, "un-settling an active session is a no-op");
+		chatStore.deleteChat(chat.id);
+		off();
+	});
+
 	it("deleteChat on a missing id stays silent", () => {
 		let announces = 0;
 		const off = subscribe((e) => {

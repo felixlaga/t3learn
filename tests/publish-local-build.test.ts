@@ -93,7 +93,7 @@ describe("publish-local-build", () => {
 			return { status: 0 };
 		});
 		try {
-			await publish({ dist: s.dist, repo: "felixlaga/t3learn", tag: "local-latest", build: 4, commit: SHA, run: gh.run, log: () => {} });
+			const manifest = await publish({ dist: s.dist, repo: "felixlaga/t3learn", tag: "local-latest", build: 4, commit: SHA, run: gh.run, log: () => {} });
 			const sequence = gh.calls.map((c) => `${c.command} ${c.args.slice(0, 3).join(" ")}`);
 			assert.deepEqual(sequence, [
 				`git log -1 --format=%s`,
@@ -104,6 +104,36 @@ describe("publish-local-build", () => {
 				`gh release upload local-latest`,
 			]);
 			assert.equal(gh.calls[3]!.args[3], "T3Learn-0.3.9-arm64-mac.zip", "only the stale zip is removed; the current name is clobbered on upload");
+			assert.equal("installer" in assetsOf(manifest)["darwin-arm64"]!, false, "no dmg built, no installer entry");
+		} finally {
+			s.cleanup();
+		}
+	});
+
+	it("a DMG rides along under its stable name: manifest installer entry, stale dmgs removed, uploaded with the zip", async () => {
+		const s = scratch();
+		fs.writeFileSync(path.join(s.dist, "T3Learn.dmg"), Buffer.alloc(99, 2));
+		const gh = recorder((call) => {
+			if (call.command === "git") return { status: 0, stdout: "subject\n" };
+			if (call.args[0] === "release" && call.args[1] === "view") {
+				return { status: 0, stdout: JSON.stringify({ assets: [{ name: "T3Learn-0.3.9-arm64.dmg" }, { name: "T3Learn.dmg" }, { name: "T3Learn-0.4.0-arm64-mac.zip" }] }) };
+			}
+			return { status: 0 };
+		});
+		try {
+			const manifest = await publish({ dist: s.dist, repo: "felixlaga/t3learn", tag: "local-latest", build: 5, commit: SHA, run: gh.run, log: () => {} });
+			const installer = (assetsOf(manifest)["darwin-arm64"] as unknown as { installer: Asset }).installer;
+			assert.equal(installer.name, "T3Learn.dmg");
+			assert.equal(installer.url, "https://github.com/felixlaga/t3learn/releases/download/local-latest/T3Learn.dmg", "the link a website can keep");
+			assert.equal(installer.size, 99);
+			assert.equal(installer.sha512, createHash("sha512").update(Buffer.alloc(99, 2)).digest("hex"));
+			const removed = gh.calls.filter((c) => c.args[0] === "release" && c.args[1] === "delete-asset").map((c) => c.args[3]);
+			assert.deepEqual(removed, ["T3Learn-0.3.9-arm64.dmg"], "the old versioned dmg goes; the stable name is clobbered");
+			const upload = gh.calls.at(-1)!.args;
+			assert.ok(upload.includes(path.join(s.dist, "T3Learn.dmg")));
+			assert.ok(upload.includes(path.join(s.dist, "T3Learn-0.4.0-arm64-mac.zip")));
+			const edit = gh.calls.find((c) => c.args[0] === "release" && c.args[1] === "edit")!.args;
+			assert.ok(edit.join(" ").includes("T3Learn.dmg"), "the notes link the download");
 		} finally {
 			s.cleanup();
 		}

@@ -14,7 +14,7 @@ import React from "react";
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { renderToStaticMarkup } from "react-dom/server";
-import { SessionRow, timeAgo } from "../components/sidebar.tsx";
+import { SessionRow, SettledShelfHeader, partitionSettled, timeAgo } from "../components/sidebar.tsx";
 import type { ChatListItem } from "../src/core/index.ts";
 
 function item(overrides: Partial<ChatListItem>): ChatListItem {
@@ -159,5 +159,32 @@ describe("SessionRow practice badge (practice sessions, 2026-10-04)", () => {
 	it("a practice row with a posed problem says the problem is waiting", () => {
 		const html = render(item({ kind: "practice", pendingProblem: true }));
 		assert.match(html, /Problem waiting ·/);
+	});
+});
+
+describe("the Settled shelf (owner, 2026-10-28 — T3 Code's shelf)", () => {
+	it("the header carries the count, the collapsed chevron points up, aria-expanded says the state", () => {
+		const closed = renderToStaticMarkup(<SettledShelfHeader count={86} open={false} onToggle={() => {}} />);
+		assert.match(closed, /Settled \(86\)/);
+		assert.match(closed, /aria-expanded="false"/);
+		assert.match(closed, /lucide-chevron-up/);
+		const open = renderToStaticMarkup(<SettledShelfHeader count={2} open={true} onToggle={() => {}} />);
+		assert.match(open, /aria-expanded="true"/);
+		assert.match(open, /lucide-chevron-down/);
+	});
+
+	it("partitions by the stamp: active by activity, the shelf by settle time; a search keeps score order", () => {
+		const list = [
+			item({ id: "a", updatedAt: "2026-01-03T00:00:00.000Z" }),
+			item({ id: "s1", updatedAt: "2026-01-09T00:00:00.000Z", settledAt: "2026-01-04T00:00:00.000Z" }),
+			item({ id: "b", updatedAt: "2026-01-05T00:00:00.000Z" }),
+			item({ id: "s2", updatedAt: "2026-01-01T00:00:00.000Z", settledAt: "2026-01-06T00:00:00.000Z" }),
+		];
+		const idle = partitionSettled(list, false);
+		assert.deepEqual(idle.active.map((c) => c.id), ["b", "a"], "newest activity first");
+		assert.deepEqual(idle.settled.map((c) => c.id), ["s2", "s1"], "most recently settled first");
+		const searching = partitionSettled(list, true);
+		assert.deepEqual(searching.active.map((c) => c.id), ["a", "b"], "the search's order is kept");
+		assert.deepEqual(searching.settled.map((c) => c.id), ["s1", "s2"]);
 	});
 });

@@ -112,6 +112,25 @@ export const GRAPH_FORMAT_FILE = path.join(PATHS.graph, "format.json");
 export const SETTINGS_FILE = path.join(DATA_ROOT, "settings.json");
 
 /**
+ * THE AUTOMATIC BACKUP's bookkeeping (backup wave, owner 2026-10-28): what
+ * the app last pushed to the private GitHub repository — inventory,
+ * commit, time, last error. Lives beside the records it describes and is
+ * NOT part of the snapshot (core/backup.ts allowedLearningFile).
+ */
+export const BACKUP_STATE_FILE = path.join(DATA_ROOT, "backup-state.json");
+
+/**
+ * The GitHub OAuth App behind the in-app device-code sign-in (backup wave,
+ * owner 2026-10-28). Public by design: the device flow has no client
+ * secret, the id only names the app a user authorizes. Paste the client id
+ * of an OAuth App with "Enable Device Flow" checked into the fallback
+ * below (GitHub → Settings → Developer settings → OAuth Apps), or export
+ * LH_GITHUB_CLIENT_ID. Empty = Settings → Backup offers only a pasted
+ * token.
+ */
+export const GITHUB_OAUTH_CLIENT_ID = process.env.LH_GITHUB_CLIENT_ID || "";
+
+/**
  * User prompt-override files (settings-storage wave, 2026-09-19): the
  * per-segment system-prompt overrides mirroring the SOURCE layout
  * (src/agent/prompts/) — the shared base as prompts/system-prompt.md,

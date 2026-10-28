@@ -16,8 +16,27 @@ import {
 	parseGeneralSettingsBody,
 	parseCompactionSettingsBody,
 	parseGraphSettingsBody,
+	parseBackupSettingsBody,
 	SETTINGS_SECTIONS,
 } from "../src/server/settings-body.ts";
+
+describe("parseBackupSettingsBody (backup wave, 2026-10-28)", () => {
+	it("parses enabled + a GitHub repository name; registered as the backup section", () => {
+		const r = parseBackupSettingsBody({ enabled: true, repo: "t3learn-data" });
+		assert.ok(r.ok);
+		assert.deepEqual(r.settings, { enabled: true, repo: "t3learn-data" });
+		assert.deepEqual(parseBackupSettingsBody({}), { ok: true, settings: {} });
+		assert.equal(SETTINGS_SECTIONS.backup, parseBackupSettingsBody);
+	});
+
+	it("rejects a non-boolean enabled and a name GitHub would refuse", () => {
+		assert.equal(parseBackupSettingsBody({ enabled: "on" }).ok, false);
+		assert.equal(parseBackupSettingsBody({ repo: "has space" }).ok, false);
+		assert.equal(parseBackupSettingsBody({ repo: ".hidden" }).ok, false);
+		assert.equal(parseBackupSettingsBody({ repo: "ends.git" }).ok, false);
+		assert.equal(parseBackupSettingsBody({ repo: "" }).ok, false);
+	});
+});
 
 describe("parseGeneralSettingsBody", () => {
 	it("parses {} and {autoUpdate} replace-whole", () => {
@@ -234,12 +253,13 @@ describe("parseCompactionSettingsBody (owner round 14)", () => {
 });
 
 describe("SETTINGS_SECTIONS (the route's section map)", () => {
-	it("maps exactly the seven record sections", () => {
+	it("maps exactly the eight record sections", () => {
 		// compaction joined (owner round 14): its own section PUT — the
-		// threshold is engine behavior, not an agent-section key.
+		// threshold is engine behavior, not an agent-section key. backup
+		// joined with the automatic GitHub backup (2026-10-28).
 		assert.deepEqual(
 			Object.keys(SETTINGS_SECTIONS),
-			["general", "chat", "agent", "appearance", "graph", "compaction", "models"],
+			["general", "chat", "agent", "appearance", "graph", "compaction", "models", "backup"],
 		);
 	});
 });

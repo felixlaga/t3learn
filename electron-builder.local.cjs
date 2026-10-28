@@ -27,4 +27,10 @@ module.exports = {
 	},
 	publish: null,
 	mac: { icon: "build/icon.icns", identity: null, notarize: false },
+	// The DMG keeps one name across versions (owner, 2026-10-28) so the
+	// download link on a website never changes:
+	// https://github.com/<repo>/releases/download/local-latest/T3Learn.dmg
+	// The zip keeps electron-builder's versioned name; the updater reads
+	// the real name from the manifest, so neither side depends on the other.
+	dmg: { artifactName: "T3Learn.dmg" },
 };

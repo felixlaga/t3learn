@@ -12,7 +12,7 @@ For an answer, use **Add handwritten thinking**, then **Convert to editable text
 
 Files and their prepared model context live in `data/attachments/<id>/`, separate from the chat JSON. Chat records contain small attachment references. Original files remain available from their transcript cards when you reopen the session. Uploading or transcribing does not import documents into the knowledge graph. Normal teacher-prose extraction from the ensuing lesson continues as before. The context is sent to your selected provider when used; it is not an offline OCR feature.
 
-**The private GitHub backup excludes attachment files.** It includes the transcript references and submitted text. To preserve the original images/PDFs, separately copy the `attachments/` directory. On a restore without those files, the app reports them as unavailable instead of inventing their contents. Removing a preview removes it from the outgoing message; it does not erase local upload files. Images and PDFs can account for most of your disk usage.
+**The GitHub backups (automatic and manual) exclude attachment files.** They include the transcript references and submitted text. To preserve the original images/PDFs, separately copy the `attachments/` directory. On a restore without those files, the app reports them as unavailable instead of inventing their contents. Removing a preview removes it from the outgoing message; it does not erase local upload files. Images and PDFs can account for most of your disk usage.
 
 ## Progress
 
@@ -56,11 +56,25 @@ A short two-answer QA lesson measured 13,505 bytes. That is a small sample, not 
 
 The progress dashboard adds no persistent score database. Git history retains prior versions, so the private backup repository can grow beyond the latest snapshot's size.
 
-## Private GitHub backup
+## Automatic GitHub backup
+
+Since 2026-10-28 the app keeps a **private GitHub repository equal to your learning records** by itself. Open **Settings → Backup** (the first-run setup offers the same screen after the model pickers):
+
+1. **Connect GitHub.** The app shows a short code. Enter it at github.com/login/device and confirm. Nothing else to install: no git, no gh. If the build has no GitHub client id (see below), paste a token instead: a classic token with the `repo` scope, or a fine-grained token with Administration and Contents write on all repositories.
+2. **Name the repository.** `t3learn-data` is proposed. The app creates it as private, or uses an existing private repository of that name. A public repository of that name is refused.
+3. Done. About half a minute after each change (a finished turn, a new or deleted session, an extraction, a settings edit) the app pushes one commit. A five-minute check catches writes that announce nothing. **Back up now** pushes at once.
+
+What goes: the same allowlist as the manual script below (chat JSON, the known graph files, `learning.json`, non-secret `settings.json`), in the same `snapshot/` layout with a `manifest.json` of SHA-256 checksums, so `npm run data:restore` reads an automatic backup unchanged. Records over 10 MiB are left out and listed in the section. Credentials, CLI state, jobs, logs, debug output and attachment files never leave the machine. The token is stored in `auth.json` as `GITHUB_BACKUP_TOKEN` (mode 0600) and never enters a backup.
+
+Each push builds on the commit the app pushed last. If the branch has moved (another device, a hand edit), the app rebuilds the whole `snapshot/` tree from the local records: **the local records are the truth.** One guard protects a fresh install: an app with no records never overwrites a repository that already holds a backup. Restore first (below) or pick a new name. Nothing is ever force-pushed; history keeps every earlier snapshot. Failures show in the section and are retried after five minutes. **Disconnect** forgets the token and stops the loop; the repository and its history stay.
+
+The code sign-in needs a GitHub OAuth App with **Enable Device Flow** checked (GitHub → Settings → Developer settings → OAuth Apps). Its client id is public and goes into `GITHUB_OAUTH_CLIENT_ID` in `config.ts` (or `LH_GITHUB_CLIENT_ID` at build time). Without it the section offers only the pasted token.
+
+## Manual GitHub backup
 
 Public code: <https://github.com/felixlaga/t3learn>. Personal backups: **private** <https://github.com/felixlaga/t3learn-data>.
 
-The backup is manual and one-way. It is not automatic multi-device synchronization. Quit LearnHarness before taking a backup for a consistent snapshot. With Node and the GitHub CLI installed and `gh auth login` completed, run from this checkout:
+The manual backup is one-way and produces the same layout as the automatic one. Quit LearnHarness before taking a backup for a consistent snapshot. With Node and the GitHub CLI installed and `gh auth login` completed, run from this checkout:
 
 ```sh
 npm run data:backup -- --repo felixlaga/t3learn-data

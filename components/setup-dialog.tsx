@@ -26,6 +26,14 @@
  *     All three required (owner: no skip, no defaults); Save PUTs the
  *     models section and reports onDone(models).
  *
+ *   Stage 3 — Backup (backup wave, owner 2026-10-28): after the models
+ *     land, one optional screen offers the private GitHub backup (the
+ *     Backup section in compact form). "Later" or a connected repository
+ *     ends setup; onDone fires then, not at the models save, so the
+ *     dialog stays up for this screen. Skipped outright when a backup
+ *     repository is already connected (a re-run of setup to change
+ *     models).
+ *
  * Closable without configuring (Esc/backdrop/✕) — browsing the app stays
  * possible; the GATE is the send interception, not the dialog. The
  * settings-dialog visual language: dim backdrop, border rounded-md card,
@@ -49,6 +57,7 @@ import { NativeSubscriptionBackgroundAccess, SubscriptionConnections } from "@/c
 import { defaultOrderLevel, populateLevel, THINKING_LABEL } from "@/components/thinking-default";
 import { ThinkingMenuList } from "@/components/settings/model-menu";
 import type { ThinkingLevel } from "@earendil-works/pi-agent-core";
+import { BackupSection } from "@/components/settings/backup-section";
 
 /** The pickers' slot identity — same roster language as the Agent
  *  section's slot rows. */
@@ -238,6 +247,9 @@ export function SetupDialog({
 	const [saving, setSaving] = useState(false);
 	const [error, setError] = useState<string | null>(null);
 	const [openMenu, setOpenMenu] = useState<{ slot: ModelSlotName; kind: "model" | "thinking" } | null>(null);
+	/** Stage 3 (backup): the saved models wait here while the backup screen
+	 *  shows; onDone(models) fires when it ends. */
+	const [savedModels, setSavedModels] = useState<ModelsSettings | null>(null);
 	// Stage 1's first-key screen (zero-keys wave): the provider roster,
 	// the chosen provider + pasted value, its busy/error pair, and its own
 	// menu-open bit (the slot menus' dismissal machinery covers it too —
@@ -272,6 +284,7 @@ export function SetupDialog({
 		setPicked({});
 		setLevels({});
 		setError(null);
+		setSavedModels(null);
 		fetch("/api/keys")
 			.then((r) => r.json())
 			.then((b: { providers?: ProviderKeyInfo[] }) => { if (!cancelled) setKeyProviders(b.providers ?? []); })
@@ -395,8 +408,22 @@ export function SetupDialog({
 			return;
 		}
 		notifySettingsSaved("models");
-		onDone(models);
+		// Stage 3 (backup wave): offer the backup once, unless a repository is
+		// already connected — then setup ends here as before.
+		const backup = await fetch("/api/backup", { cache: "no-store" })
+			.then((r) => (r.ok ? (r.json() as Promise<{ connected?: boolean; repo?: string | null }>) : null))
+			.catch(() => null);
+		setSaving(false);
+		if (backup?.connected && backup.repo) {
+			onDone(models);
+			return;
+		}
+		setSavedModels(models);
 	}
+
+	const finish = () => {
+		if (savedModels) onDone(savedModels);
+	};
 
 	return createPortal(
 		<div
@@ -413,7 +440,7 @@ export function SetupDialog({
 				onClick={(e) => e.stopPropagation()}
 			>
 				<header className="flex h-15 shrink-0 items-center gap-3 border-b border-border px-5">
-					<h2 className="font-title text-2xl tracking-tight">Set up your models</h2>
+					<h2 className="font-title text-2xl tracking-tight">{savedModels ? "Back up your learning" : "Set up your models"}</h2>
 					<Hint label="Close" binding="escape" side="left">
 <button
 						type="button"
@@ -427,7 +454,17 @@ export function SetupDialog({
 </Hint>
 				</header>
 
-				{stage === "keys" ? (
+				{savedModels ? (
+					<div className="flex flex-col gap-4 px-6 py-5" data-testid="setup-stage-backup">
+						<BackupSection compact onConnected={finish} />
+						<div className="flex items-center gap-3 border-t border-border/60 pt-4">
+							<button type="button" data-testid="setup-backup-later" onClick={finish} className="rounded-sm border border-border bg-background px-3 py-1.5 font-ui text-xs text-foreground transition-colors hover:border-muted-foreground/50">
+								Later
+							</button>
+							<p className="text-xs text-muted-foreground/70">You can set this up any time in Settings → Backup.</p>
+						</div>
+					</div>
+				) : stage === "keys" ? (
 					<div className="flex flex-col px-6 py-5">
 						{failed ? (
 							<p className="text-sm text-foreground">

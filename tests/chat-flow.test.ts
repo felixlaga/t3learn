@@ -926,6 +926,32 @@ describe("renameChat (the header's click-to-edit title)", () => {
 	});
 });
 
+describe("setSettled (the sidebar's Settled shelf, owner 2026-10-28)", () => {
+	it("settling stamps settledAt and keeps updatedAt; the list view carries the stamp", () => {
+		const chat = chatStore.createChat("put me away");
+		createdChats.push(chat.id);
+		const before = chatStore.getChat(chat.id)!.updatedAt;
+		const settled = chatStore.setSettled(chat.id, true);
+		assert.ok(settled.settledAt, "stamped");
+		assert.equal(settled.updatedAt, before, "settling is not conversation activity");
+		const stamp = settled.settledAt;
+		assert.equal(chatStore.setSettled(chat.id, true).settledAt, stamp, "settling again keeps the original stamp");
+		assert.equal(chatStore.listChats().find((c) => c.id === chat.id)!.settledAt, stamp, "the summary spread carries it");
+	});
+
+	it("un-settling clears the stamp and bumps updatedAt so the row returns to the top", async () => {
+		const chat = chatStore.createChat("bring me back");
+		createdChats.push(chat.id);
+		chatStore.setSettled(chat.id, true);
+		const before = chatStore.getChat(chat.id)!.updatedAt;
+		await new Promise((r) => setTimeout(r, 2));
+		const back = chatStore.setSettled(chat.id, false);
+		assert.equal(back.settledAt, undefined);
+		assert.ok(back.updatedAt > before, "returns to the top of the active list");
+		assert.equal("settledAt" in chatStore.getChat(chat.id)!, false, "the key is gone from the record, not null");
+	});
+});
+
 describe("the BYOK turn gate (no factory floor — owner, 2026-09-22)", () => {
 	it("a chat with no model refuses the turn with the 503 envelope — nothing lingers", async () => {
 		const chat = chatStore.createChat("Test: unconfigured chat");

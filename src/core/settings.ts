@@ -32,6 +32,7 @@ import { AUTH_PROVIDER_KEYS } from "./auth-keys.ts";
 import type { ModelRole } from "../../config.ts";
 import type { ChatSettings } from "./contracts/chat.ts";
 import type { SearchEngineId } from "./search.ts";
+import { validBackupRepoName, type BackupSettings } from "./backup.ts";
 
 /** The schema version this code understands. Bump ONLY for breaking shape
  *  changes (a field renamed/meaning changed); pure additions never bump. */
@@ -367,6 +368,9 @@ export interface UserSettings {
 	appearance?: AppearanceSettings;
 	graph?: GraphSettings;
 	compaction?: CompactionSettings;
+	/** The automatic GitHub backup (backup wave, 2026-10-28): on/off and
+	 *  the repository name. The token lives in auth.json, never here. */
+	backup?: BackupSettings;
 	[key: string]: unknown;
 }
 
@@ -441,6 +445,14 @@ function sanitizeGeneral(raw: Record<string, unknown>): GeneralSettings {
 	const out: GeneralSettings = {};
 	const autoUpdate = boolOrDrop(raw.autoUpdate);
 	if (autoUpdate !== undefined) out.autoUpdate = autoUpdate;
+	return out;
+}
+
+function sanitizeBackup(raw: Record<string, unknown>): BackupSettings {
+	const out: BackupSettings = {};
+	const enabled = boolOrDrop(raw.enabled);
+	if (enabled !== undefined) out.enabled = enabled;
+	if (typeof raw.repo === "string" && validBackupRepoName(raw.repo)) out.repo = raw.repo;
 	return out;
 }
 
@@ -624,6 +636,9 @@ export function sanitizeUserSettings(raw: unknown): UserSettings | null {
 	if (r.models !== null && typeof r.models === "object" && !Array.isArray(r.models)) {
 		const models = sanitizeModels(r.models as Record<string, unknown>);
 		if (Object.keys(models).length) out.models = models;
+	}
+	if (r.backup !== null && typeof r.backup === "object" && !Array.isArray(r.backup)) {
+		out.backup = sanitizeBackup(r.backup as Record<string, unknown>);
 	}
 	if (r.graph !== null && typeof r.graph === "object" && !Array.isArray(r.graph)) {
 		out.graph = sanitizeGraph(r.graph as Record<string, unknown>);

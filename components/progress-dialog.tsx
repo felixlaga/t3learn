@@ -5,15 +5,22 @@ import { Dialog } from "radix-ui";
 import { AwardIcon, BookOpenIcon, CheckIcon, FlameIcon, GitBranchIcon, SparklesIcon, TrophyIcon, XIcon } from "lucide-react";
 import { ANSWER_XP, type LearningProgress } from "@/src/core";
 import { useServerEvent, useServerResync } from "./server-events";
+import { Hint } from "@/components/ui/hint";
+import { FOOTER_ICON_CLASS } from "@/components/footer-icon";
 
 const number = (value: number) => value.toLocaleString();
 
 export function ProgressButton() {
 	return <Dialog.Root>
 		<Dialog.Trigger asChild>
-			<button type="button" data-testid="progress-entry" className="flex items-center gap-1.5 rounded-md px-2 py-1.5 text-xs uppercase tracking-wider text-muted-foreground transition-colors hover:bg-accent hover:text-foreground">
-				<TrophyIcon aria-hidden className="size-3 text-amber-400" />Progress
-			</button>
+			{/* Icon-only since the T3 Code row (owner, 2026-10-28); the trophy
+			    keeps its amber (the owner's earlier choice), the label rides
+			    the tooltip and the accessible name. */}
+			<Hint label="Progress" side="top">
+				<button type="button" data-testid="progress-entry" aria-label="Progress" className={FOOTER_ICON_CLASS}>
+					<TrophyIcon aria-hidden className="size-4 text-amber-400" />
+				</button>
+			</Hint>
 		</Dialog.Trigger>
 		<Dialog.Portal>
 			<Dialog.Overlay className="fixed inset-0 z-50 bg-black/65" />

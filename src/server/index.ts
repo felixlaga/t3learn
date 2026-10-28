@@ -52,3 +52,6 @@ export { uploadAttachment, downloadAttachment, getAttachmentRef } from "./attach
 export { transcribeAttachment } from "./transcription.ts";
 export { learningRoute, startLearningRoute, proposeLearningRoute, learningSessionDetail } from "./learning.ts";
 export { cliRequestAllowed } from "./cli-providers.ts";
+// The automatic GitHub backup (backup wave, 2026-10-28): the routes under
+// /api/backup drive the process singleton; instrumentation.ts starts it.
+export { backupSync, startBackupSync, BackupInputError, BACKUP_TOKEN_KEY } from "./backup.ts";

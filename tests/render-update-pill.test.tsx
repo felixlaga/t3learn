@@ -1,9 +1,11 @@
 /**
- * Update-pill render tests (owner, 2026-10-28): the pill is a pure
- * function of the last lh:update-status push, seeded by one updateState()
- * read. Hidden without a bridge (browser / SSR) and while idle; each
- * visible state carries its wording and its click. Same linkedom +
- * createRoot shape as the retired banner test.
+ * Update-button render tests (owner, 2026-10-28; round icon the same
+ * day): the button is a pure function of the last lh:update-status push,
+ * seeded by one updateState() read. Hidden without a bridge (browser /
+ * SSR); always present in the desktop app, where idle reads "Up to date"
+ * and a click checks again. Each state carries its wording (the hidden
+ * label) and its click. Same linkedom + createRoot shape as the retired
+ * banner test.
  */
 import React from "react";
 (globalThis as Record<string, unknown>).React = React;
@@ -51,20 +53,28 @@ describe("update pill", () => {
 		assert.equal(renderToStaticMarkup(<UpdatePill />), "");
 	});
 
-	it("stays hidden while idle and shows 'Update available' that downloads on click", async () => {
+	it("idle reads 'Up to date' and checks on click; 'Update available' downloads on click", async () => {
 		let push: Push | null = null;
 		let downloads = 0;
+		let checks = 0;
 		const { host, root, pill } = await mount({
 			onUpdateStatus: (cb) => { push = cb; return () => {}; },
 			updateState: async () => status({ status: "idle", version: null, build: null }),
+			checkForUpdate: async () => { checks += 1; return status({ status: "idle" }); },
 			downloadUpdate: async () => { downloads += 1; return status({ status: "downloading", percent: 0 }); },
 		});
 		await new Promise((r) => setTimeout(r, 0));
-		assert.equal(pill(), null, "idle renders nothing");
+		flushSync(() => {});
+		const idle = pill();
+		assert.ok(idle, "the desktop app always shows the button (T3 Code's row)");
+		assert.equal(idle!.dataset.status, "idle");
+		assert.ok(idle!.textContent?.includes("Up to date"));
+		idle!.click();
+		assert.equal(checks, 1, "an idle click checks for updates");
 
 		flushSync(() => push?.(status({ status: "available", notes: "Teach plainly" })));
 		const button = pill();
-		assert.ok(button, "the pill renders once an update is available");
+		assert.ok(button, "the button renders once an update is available");
 		assert.equal(button!.dataset.status, "available");
 		assert.ok(button!.textContent?.includes("Update available"));
 		button!.click();
@@ -72,6 +82,7 @@ describe("update pill", () => {
 
 		flushSync(() => push?.(status({ status: "downloading", percent: 42 })));
 		assert.ok(pill()!.textContent?.includes("Downloading 42%"));
+		assert.equal((pill() as HTMLButtonElement).disabled, true, "nothing to click while downloading");
 		root.unmount();
 		host.remove();
 	});

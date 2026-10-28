@@ -48,6 +48,10 @@ export interface ServerEvents {
 	 *  the chat; the client mirrors it by disabling the composer/dock
 	 *  submit. */
 	"compaction-changed": { chatId: string; running: boolean };
+	/** The automatic backup's state moved (backup wave, 2026-10-28): a
+	 *  sign-in landed, a push started or settled, an error cleared. The
+	 *  Backup section refetches GET /api/backup. */
+	"backup-changed": Record<string, never>;
 }
 
 export type ServerEventType = keyof ServerEvents;
@@ -63,6 +67,7 @@ export const SERVER_EVENT_TYPES = [
 	"chats-changed",
 	"record-changed",
 	"compaction-changed",
+	"backup-changed",
 ] as const satisfies readonly ServerEventType[];
 
 /** One notification: the type discriminates the payload. */

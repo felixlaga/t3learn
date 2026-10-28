@@ -73,6 +73,10 @@ export * from "./session-navigation.ts";
 // shape rules + masking — pure, browser-safe (the auth page binds to the
 // /api/keys routes built on it).
 export * from "./auth-keys.ts";
+// backup.ts (backup wave, 2026-10-28): the automatic GitHub backup's pure
+// core — the snapshot allowlist, the diff, the settings section and the
+// status wire shape the Backup section renders.
+export * from "./backup.ts";
 // keyboard.ts: the shortcut registry + binding normalization (pure, browser-safe).
 export * from "./keyboard.ts";
 export * from "./coverage.ts";

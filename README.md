@@ -29,9 +29,9 @@ This checkout adds **Codex CLI** and **Claude Code** subscription connections al
 
 Attach images and selected PDF pages as lesson context. Use **Add handwritten thinking** in answer fields to transcribe your working into an editable draft before submitting. See [attachments and learning storage](docs/learning-data.md).
 
-Build your own macOS app with `npm ci` followed by `npm run desktop:local`. The app is written to `dist/local/mac-arm64/T3Learn.app` on Apple Silicon (`mac` on Intel). Every push to `main` also builds the Apple Silicon app on GitHub Actions and publishes it to the `local-latest` prerelease; an installed copy offers that build in its sidebar as **Update available**. See [CLI setup and local macOS builds](docs/local-desktop.md) for details.
+**Download T3Learn for Apple Silicon:** <https://github.com/felixlaga/t3learn/releases/download/local-latest/T3Learn.dmg> (unsigned: allow the first open under System Settings → Privacy & Security). Every push to `main` builds it on GitHub Actions and publishes it to the `local-latest` prerelease; an installed copy offers the new build from the update button in its sidebar. Or build it yourself with `npm ci` followed by `npm run desktop:local` (`dist/local/mac-arm64/T3Learn.app`). See [CLI setup and local macOS builds](docs/local-desktop.md).
 
-The **Progress** button beside Settings shows XP, levels, streaks, badges and knowledge-map counts without changing the learning system. See [learning data and private backups](docs/learning-data.md). Personal records and credentials do not belong in this public source repository.
+The sidebar's bottom row holds Settings, the graph view, **Progress** (XP, levels, streaks, badges and knowledge-map counts) and the update button. Sessions you are done with can be settled into a collapsed shelf. **Settings → Backup** keeps a private GitHub repository equal to your learning records, created by the app at setup and pushed after every change. See [learning data and backups](docs/learning-data.md). Personal records and credentials do not belong in this public source repository.
 
 ## How it works
 

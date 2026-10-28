@@ -49,6 +49,7 @@ import { KeysSection } from "./keys-section.tsx";
 import { Hint } from "@/components/ui/hint";
 import { AppearanceSection, GraphSection } from "./appearance-section.tsx";
 import { KeyboardSection } from "./keyboard-section.tsx";
+import { BackupSection } from "./backup-section.tsx";
 import { ChatGPTUIProvider } from "./chatgpt-connection.tsx";
 import { NativeSubscriptionUIProvider } from "./subscription-connections.tsx";
 
@@ -61,6 +62,7 @@ const SECTIONS = [
 	{ id: "appearance", label: "Appearance" },
 	{ id: "graph", label: "Graph" },
 	{ id: "keyboard", label: "Keyboard", hint: "Stored on this device" },
+	{ id: "backup", label: "Backup" },
 	{ id: "general", label: "General" },
 ] as const;
 type SectionId = (typeof SECTIONS)[number]["id"];
@@ -437,6 +439,18 @@ export function SettingsDialogBody({
 									testid="section-keyboard"
 								>
 									<KeyboardSection />
+								</SettingsSection>
+							)}
+							{/* Backup (backup wave, 2026-10-28): the automatic private
+							    GitHub backup — sign-in, repository, on/off, last push. The
+							    section owns its own reads (GET /api/backup) and writes. */}
+							{active === "backup" && (
+								<SettingsSection
+									title="Backup"
+									hint="A private GitHub repository the app keeps equal to your learning records"
+									testid="section-backup"
+								>
+									<BackupSection />
 								</SettingsSection>
 							)}
 						</div>

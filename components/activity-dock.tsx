@@ -341,8 +341,14 @@ export function ActivitySection({ feed: feedProp }: { feed?: ActivityFeed }) {
 	// Sidebar-native skin (owner, sidebar round): part of the sidebar's
 	// surface, not a floating card — the border-t separator matches the
 	// sidebar's own edge line, the header matches the "Sessions" label, the
-	// rows match the session rows' hover. Empty means empty: the header sits
-	// alone (the cost span is population, not decoration).
+	// rows match the session rows' hover.
+	//
+	// PRESENT ONLY WHILE SOMETHING RUNS (owner, 2026-10-28 — reverses the
+	// "always present, empty means empty" rule of the sidebar round): the
+	// bottom of the sidebar is now T3 Code's icon row, and an idle header
+	// above it was the one thing that did not match. The section appears
+	// with its first blob and leaves with its last.
+	if (blobs.length === 0) return null;
 	return (
 		<section data-testid="activity-section" className="border-t border-border px-3 pb-3 pt-2">
 			<div className="mb-1 flex items-center gap-1.5 text-xs uppercase tracking-widest text-muted-foreground/70">

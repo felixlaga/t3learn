@@ -25,6 +25,7 @@ import type {
 } from "../core/settings.ts";
 import { BACKGROUND_MODEL_ROLES, COMPACTION_THRESHOLD_FLOOR, EXTRACTION_CHUNK_TOKENS_FLOOR, MODEL_SLOTS } from "../core/settings.ts";
 import { WRITABLE_TOOL_KEYS } from "../core/pending.ts";
+import { validBackupRepoName, type BackupSettings } from "../core/backup.ts";
 
 /** Parsed-or-rejected — `ok: false` carries the 400's error message. */
 export type SettingsBodyResult<T> =
@@ -85,6 +86,24 @@ export function parseGeneralSettingsBody(body: unknown): SettingsBodyResult<Gene
 			return { ok: false, error: "autoUpdate must be a boolean" };
 		}
 		settings.autoUpdate = raw.autoUpdate;
+	}
+	return { ok: true, settings };
+}
+
+/** backup: { enabled?: boolean, repo?: string } (backup wave, 2026-10-28). */
+export function parseBackupSettingsBody(body: unknown): SettingsBodyResult<BackupSettings> {
+	const raw = asRecord(body);
+	if (!raw) return { ok: false, error: "Invalid JSON body" };
+	const settings: BackupSettings = {};
+	if (raw.enabled !== undefined) {
+		if (typeof raw.enabled !== "boolean") return { ok: false, error: "enabled must be a boolean" };
+		settings.enabled = raw.enabled;
+	}
+	if (raw.repo !== undefined) {
+		if (typeof raw.repo !== "string" || !validBackupRepoName(raw.repo)) {
+			return { ok: false, error: "repo must be a GitHub repository name (letters, digits, dot, dash, underscore)" };
+		}
+		settings.repo = raw.repo;
 	}
 	return { ok: true, settings };
 }
@@ -385,6 +404,7 @@ export const SETTINGS_SECTIONS = {
 	graph: parseGraphSettingsBody,
 	compaction: parseCompactionSettingsBody,
 	models: parseModelsSettingsBody,
+	backup: parseBackupSettingsBody,
 } as const;
 
 export type SettingsSectionName = keyof typeof SETTINGS_SECTIONS;

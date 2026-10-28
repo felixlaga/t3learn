@@ -6,8 +6,8 @@ import { formatTokens, formatUsd } from "../components/usage-format.ts";
 import { jobCost } from "../src/server/pricing.ts";
 
 // The section's pure layer: folds, formatting, and blob order — then the SSR
-// render (blobs, "—" doctrine, the abort affordance, the always-present
-// header — the sidebar's background-agents strip).
+// render (blobs, "—" doctrine, the abort affordance, the header that
+// exists only while something runs — the sidebar's background-agents strip).
 
 const NOW = Date.parse("2026-09-09T12:00:00Z");
 
@@ -188,12 +188,9 @@ describe("activity dock pure layer", () => {
 });
 
 describe("activity section render", () => {
-	it("renders the ALWAYS-PRESENT header when idle — empty means empty, nothing hides", () => {
+	it("renders NOTHING while idle (owner, 2026-10-28: the section exists only while something runs)", () => {
 		const html = renderToStaticMarkup(<ActivitySection feed={{ jobs: [], extractions: [] }} />);
-		assert.match(html, /data-testid="activity-section"/);
-		assert.match(html, /Background agents/);
-		assert.doesNotMatch(html, /activity-blob-(job|extraction)/, "no rows while idle");
-		assert.doesNotMatch(html, /activity-total-cost/, "the cost span is population, not decoration");
+		assert.equal(html, "", "no header above the icon row while idle");
 	});
 
 	it("renders one blob per running process with cost, elapsed, and the abort affordance", () => {
