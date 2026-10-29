@@ -99,7 +99,8 @@ export type StepUsageCollector = (usage: Usage) => void;
 export interface AgentBuildOptions {
 	/** Trusted, server-built context from explicit goals/review selections. */
 	learningInstructions?: string;
-	attachmentContent?: (ids: string[]) => import("../core/attachments.ts").AttachmentContent;
+	attachmentContent?: (ids: string[], refs?: import("../core/attachments.ts").AttachmentRef[]) => import("../core/attachments.ts").AttachmentContent;
+	lessonPdfTools?: Record<string, AgentTool<any>>;
 	/** Model + stream function — tests inject a scripted faux engine. */
 	engine?: PiEngine;
 	callPurpose?: { background: boolean };
@@ -194,7 +195,7 @@ function baseAgentOptions(kind: AgentKind, opts: AgentBuildOptions, tools: Agent
 			systemPrompt,
 			model: engine.model,
 			thinkingLevel: engine.level,
-			tools,
+			tools: [...tools, ...Object.values(opts.lessonPdfTools ?? {})],
 			messages: opts.messages ?? [],
 		},
 		streamFn: engine.streamFn,

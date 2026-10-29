@@ -13,7 +13,7 @@ const number = (value: number) => value.toLocaleString();
 export function ProgressButton() {
 	return <Dialog.Root>
 		{/* Icon-only since the T3 Code row (owner, 2026-10-28); the trophy
-		    keeps its amber (the owner's earlier choice), the label rides
+		    inherits the shared gray icon color; the label rides
 		    the tooltip and the accessible name.
 		    ORDER IS LOAD-BEARING (fix, 2026-10-29): the tooltip wraps the
 		    dialog trigger, never the reverse. Dialog.Trigger asChild merges
@@ -24,7 +24,7 @@ export function ProgressButton() {
 		<Hint label="Progress" side="top">
 			<Dialog.Trigger asChild>
 				<button type="button" data-testid="progress-entry" aria-label="Progress" className={FOOTER_ICON_CLASS}>
-					<TrophyIcon aria-hidden className="size-4 text-amber-400" />
+					<TrophyIcon aria-hidden className="size-4" />
 				</button>
 			</Dialog.Trigger>
 		</Hint>

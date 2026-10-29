@@ -1,4 +1,5 @@
-import { attachmentContent, readAttachment } from "../store/attachments.ts";
+import { attachmentContent, canonicalAttachment } from "../store/attachments.ts";
+import { lessonPdfTools, sessionPdfRefs } from "./lesson-pdf.ts";
 import type { Usage } from "@earendil-works/pi-ai";
 import {
 	createPracticeAgent,
@@ -169,7 +170,7 @@ export async function handleChatRequest(
 	try {
 		const refs = input.type === "answer" ? input.answer.attachments : input.type === "text" || input.type === "thinking" ? input.attachments : undefined;
 		if (refs?.length) {
-			const canonical = refs.map(ref => readAttachment(ref.id).ref);
+			const canonical = refs.map(canonicalAttachment);
 			if (input.type === "answer") input.answer = { ...input.answer, attachments: canonical };
 			else if (input.type === "text" || input.type === "thinking") input.attachments = canonical;
 		}
@@ -389,9 +390,11 @@ export async function handleChatInput(
 		restoreAutomatic: (automaticIds, retainedIds) => restoreUncommittedAutomatic(chatId, constructed, automaticIds, retainedIds),
 	});
 	const learningSession = stores.learningStore.read().sessions[chatId];
+	const pdfRefs = sessionPdfRefs(asAgentMessages(merged));
 	const agentOpts: AgentBuildOptions = {
 		...(learningSession ? { learningInstructions: learningSessionInstructions(learningSession) } : {}),
 		attachmentContent,
+		...(pdfRefs.length ? { lessonPdfTools: lessonPdfTools(pdfRefs) } : {}),
 		engine,
 		callPurpose,
 		requestCycle,

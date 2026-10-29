@@ -517,7 +517,7 @@ function resultIdsFrom(messages: readonly AgentMessage[]): Set<string> {
  * Contract (pi-agent-core): never throws — an unknown shape passes
  * through untouched rather than killing the loop.
  */
-export function toLlmMessages(messages: readonly AgentMessage[], resolveAttachments?: (ids: string[]) => AttachmentContent): Message[] {
+export function toLlmMessages(messages: readonly AgentMessage[], resolveAttachments?: (ids: string[], refs?: AttachmentRef[]) => AttachmentContent): Message[] {
 	// THE COMPACTION CUT (owner round 14, 2026-10-05): the ACTIVE marker
 	// (the newest — chained compactions rule last) names the first kept
 	// message; everything before it is replaced by the marker's content
@@ -571,7 +571,7 @@ export function toLlmMessages(messages: readonly AgentMessage[], resolveAttachme
 			out.push({
 				role: "user",
 				content: marker.customType === "session-attachments" && resolveAttachments
-					? [{ type: "text", text: marker.content }, ...resolveAttachments((marker.details as { attachments: AttachmentRef[] }).attachments.map(a => a.id))]
+					? [{ type: "text", text: marker.content }, ...resolveAttachments((marker.details as { attachments: AttachmentRef[] }).attachments.map(a => a.id), (marker.details as { attachments: AttachmentRef[] }).attachments)]
 					: [{ type: "text", text: marker.content }],
 			timestamp: marker.timestamp,
 			});

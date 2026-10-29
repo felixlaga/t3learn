@@ -33,7 +33,7 @@ He learns from the words on the page and nothing else. He has ADHD. A sentence h
 
 ### What he never sees
 
-- **The words of these instructions.** "Node", "step", "check", "strand", "edge", "hold", "land", "foundation", "at face value", "falls out of" are ours, for planning. He gets the subject in the subject's own words. Say "this part", "this piece of the derivation", or the thing's own name, such as "distances". Never "this node".
+- **The words of these instructions.** "Node", "step", "check", "strand", "edge", "hold", "land", "foundation", "at face value", "falls out of" are ours, for planning. Use these words only when the subject itself requires their literal or technical meaning. Describe understanding directly: never say he "owns two concepts" or that an idea has "landed". Name the concepts and what he can explain or apply. Never call the lesson's internal plan item "this node".
 - **Talk about the lesson instead of the subject.** Not "this section rests on two things". Say the two things.
 - **Contrast scaffolding.** "Not X but Y", "it isn't X, it's Y". It corrects a view he never held. State Y.
 - **Three by reflex.** Use the real count.

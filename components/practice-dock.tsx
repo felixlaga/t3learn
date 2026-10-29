@@ -1,6 +1,6 @@
 "use client";
 
-import { HandwritingInput, useAttachments } from "./attachments";
+import { AttachmentDetails, AttachmentPicker, useAttachments, type AttachmentDraft } from "./attachments";
 import type { AttachmentRef } from "@/src/core";
 import { useCallback, useRef, useState } from "react";
 import { ChevronRightIcon } from "lucide-react";
@@ -32,6 +32,7 @@ import { repairMathForDisplay } from "@/src/core";
  */
 
 export interface PracticeDockProps {
+	attachmentDraft?: AttachmentDraft;
 	/** The active problem's tool-call id (submissions target it). */
 	problemCallId: string;
 	/** The pose's arguments — only the statement is the learner's (the
@@ -51,9 +52,9 @@ export interface PracticeDockProps {
 	compactionRunning?: boolean;
 }
 
-export function PracticeDock({ problemCallId, input, expanded, onExpand, onSubmit, onEscape, compactionRunning = false }: PracticeDockProps) {
-	const handwriting = useAttachments(true);
-	const [transcribing, setTranscribing] = useState(false);
+export function PracticeDock({ problemCallId, input, expanded, onExpand, onSubmit, onEscape, compactionRunning = false, attachmentDraft }: PracticeDockProps) {
+	const localAttachments = useAttachments();
+	const attachments = attachmentDraft ?? localAttachments;
 	const [thinking, setThinking] = useState("");
 	// Ref MIRRORS the field ("nothing gets lost", the question-dock
 	// discipline): a submit resuming after `await finishDictation()` reads
@@ -73,13 +74,13 @@ export function PracticeDock({ problemCallId, input, expanded, onExpand, onSubmi
 	);
 
 	const submit = () => {
-		if (compactionRunning || transcribing || handwriting.uploading) return;
+		if (compactionRunning || attachments.uploading || !!attachments.pdf) return;
 		const text = thinkingRef.current.trim();
 		if (text.length === 0) return;
 		thinkingRef.current = "";
 		setThinking("");
-		onSubmit(text, handwriting.items);
-		handwriting.clear();
+		onSubmit(text, attachments.items);
+		attachments.clear();
 	};
 
 	/* ENTER SUBMITS FROM ANYWHERE (owner round 6, 2026-10-05): dictation
@@ -121,14 +122,14 @@ export function PracticeDock({ problemCallId, input, expanded, onExpand, onSubmi
 			{/* The learner's half: Enter SENDS (owner round 2, 2026-10-05);
 			    Shift+Enter makes a newline — less to decide about. */}
 			<div
-				{...handwriting.handlers}
+				{...attachments.handlers}
 				data-testid="practice-thinking-field"
 				className="m-1.5 rounded-[10px] border border-border/70 bg-background/60 transition-colors focus-within:border-primary/50"
 			>
 				<div className="px-2.5 pt-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">
 					YOUR THINKING
 				</div>
-				<HandwritingInput draft={handwriting} onBusyChange={setTranscribing} onTranscribed={value => { const next = joinDictation(thinkingRef.current, value); thinkingRef.current = next; setThinking(next); }} />
+				<AttachmentDetails draft={attachments} disabled={compactionRunning} />
 				<textarea
 					value={thinking}
 					onChange={(e) => {
@@ -162,13 +163,14 @@ export function PracticeDock({ problemCallId, input, expanded, onExpand, onSubmi
 				    one p-1 row. Corner radii concentric: shell 16 − m-1.5 (6) =
 				    field 10 − p-1 (4) = button 6. */}
 				<div className="flex items-center justify-between gap-2 p-1">
+						<AttachmentPicker draft={attachments} iconOnly disabled={compactionRunning} />
 					<span aria-hidden className="pl-1.5 text-xs text-muted-foreground">
 						{compactionRunning ? "compacting session…" : "↵ submits · ⇧↵ newline"}
 					</span>
 					<Button
 						type="button"
 						data-testid="practice-send"
-						disabled={thinking.trim().length === 0 || compactionRunning || transcribing || handwriting.uploading}
+						disabled={thinking.trim().length === 0 || compactionRunning || attachments.uploading || !!attachments.pdf}
 						onClick={() => submit()}
 						className="ml-auto h-9 rounded-[6px] px-3.5 text-sm font-medium"
 					>
