@@ -76,7 +76,8 @@ export interface LhMarkerMessage {
 		| "practice-thinking"
 		| "practice-next"
 		| "problem-dismissed"
-		| "compaction";
+		| "compaction"
+		| "late-answer";
 	/** The model-facing text ("" for plan blocks — UI-only). */
 	content: string;
 	display: boolean;
@@ -156,6 +157,33 @@ export function newAnswerResult(
 		// our payloads are JSON-safe answer structures, so the cast is honest.
 		details: answer as ToolResultMessage["details"],
 		isError: false,
+		timestamp: Date.now(),
+	};
+}
+
+/** His answer to a question that waited while he chatted (owner,
+ *  2026-10-30). The question's tool result already holds the waiting
+ *  placeholder, so the answer arrives as its own message: the model reads
+ *  the question text and his compact answer; `details` keeps the full
+ *  graded record for the transcript card, progress and the tree. */
+export interface LateAnswerDetails {
+	toolCallId: string;
+	tool: string;
+	answer: QuestionAnswerData;
+}
+
+export function newLateAnswerMessage(toolCallId: string, tool: string, answer: QuestionAnswerData): LhMarkerMessage {
+	const question = answer.questionText.replace(/\s+/g, " ").trim();
+	const content = answer.dismissed
+		? `He skipped the question that was waiting: "${question}"`
+		: `His answer to the question that was waiting: "${question}"\n${JSON.stringify(compactAnswerForModel(answer))}`;
+	return {
+		id: newMessageId(),
+		role: "custom",
+		customType: "late-answer",
+		content,
+		display: true,
+		details: { toolCallId, tool, answer } satisfies LateAnswerDetails,
 		timestamp: Date.now(),
 	};
 }
@@ -628,6 +656,44 @@ export function danglingQuestionOf(
 	return null;
 }
 
+/** The question still waiting on his screen (owner, 2026-10-30): a
+ *  question call whose result is the waiting placeholder, with no late
+ *  answer yet. The oldest one comes first, so parallel questions come
+ *  back in the order they were asked. */
+export function waitingQuestionOf(
+	messages: readonly LhMessage[],
+): { toolCallId: string; tool: string; input: unknown } | null {
+	const late = new Set<string>();
+	for (const m of messages) {
+		if ((m as { role?: string }).role === "custom" && (m as LhMarkerMessage).customType === "late-answer") {
+			late.add(((m as LhMarkerMessage).details as LateAnswerDetails).toolCallId);
+		}
+	}
+	for (let i = 0; i < messages.length; i++) {
+		const m = messages[i]!;
+		if ((m as { role?: string }).role !== "toolResult") continue;
+		const result = m as LhMessage & ToolResultMessage;
+		if (!(QUESTION_TOOLS as readonly string[]).includes(result.toolName)) continue;
+		if ((result.details as { waiting?: boolean } | undefined)?.waiting !== true || late.has(result.toolCallId)) continue;
+		for (let j = i - 1; j >= 0; j--) {
+			const a = messages[j]!;
+			if ((a as { role?: string }).role !== "assistant") continue;
+			const call = (a as AssistantMessage).content.find((b) => b.type === "toolCall" && b.id === result.toolCallId);
+			if (call && call.type === "toolCall") return { toolCallId: call.id, tool: call.name, input: call.arguments };
+		}
+		return null;
+	}
+	return null;
+}
+
+/** The question on his screen right now: a fresh one with no result, or
+ *  one that waits while he chats. */
+export function openQuestionOf(
+	messages: readonly LhMessage[],
+): { toolCallId: string; tool: string; input: unknown } | null {
+	return danglingQuestionOf(messages) ?? waitingQuestionOf(messages);
+}
+
 /** The probe→teach construction seam (chat-handler): a probe_done call in
  *  the transcript — any state — means the probe is concluded: teach. */
 export function hasProbeDone(messages: readonly LhMessage[]): boolean {
@@ -694,10 +760,11 @@ export function nativeInputCause(message: AgentMessage, history: readonly AgentM
 	if (message.role === "custom") {
 		if (["probe-handoff", "subagent-steer", "subagent-abort"].includes(message.customType)) return "automatic";
 		if (["practice-thinking", "practice-next"].includes(message.customType)) return "learner";
+		if (message.customType === "late-answer") return (message.details as LateAnswerDetails | undefined)?.answer?.dismissed ? "neutral" : "learner";
 		return ["graph-context", "plan-block", "problem-dismissed", "compaction", "session-attachments"].includes(message.customType) ? "neutral" : "unrecognizable";
 	}
 	if (message.role === "toolResult") {
-		if (!(QUESTION_TOOLS as readonly string[]).includes(message.toolName) || message.isError || message.details == null || (message.details as { dismissed?: boolean }).dismissed) return "neutral";
+		if (!(QUESTION_TOOLS as readonly string[]).includes(message.toolName) || message.isError || message.details == null || (message.details as { dismissed?: boolean }).dismissed || (message.details as { waiting?: boolean }).waiting) return "neutral";
 		const details = message.details as Partial<QuestionAnswerData>;
 		if (!["quiz", "ask", "explain"].includes(details.kind ?? "") || typeof details.questionText !== "string" || typeof details.dontKnow !== "boolean" || !Array.isArray(details.answers) || typeof details.answeredAt !== "string") return "unrecognizable";
 		const calls = history.flatMap((m) => m.role === "assistant" ? m.content.filter((b) => b.type === "toolCall" && b.id === message.toolCallId) : []);

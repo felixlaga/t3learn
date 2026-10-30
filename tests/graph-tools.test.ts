@@ -101,6 +101,7 @@ describe("prober graph tools — registration", () => {
 			"probe",
 			"probe_done",
 			"read",
+			"recall",
 			"research",
 		]);
 	});

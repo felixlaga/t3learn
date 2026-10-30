@@ -36,6 +36,8 @@ export interface PendingToolCall {
 	tool: string;
 	/** Tool input (quiz/ask args) — lets the composer pick note vs answer mode. */
 	input: unknown;
+	/** The question waited while he chatted: answering it adds a late answer. */
+	waiting?: boolean;
 }
 
 /** Tools that render in the question dock and gate the composer. The
@@ -122,7 +124,37 @@ function findPending(messages: UIMessage[], names: readonly string[]): PendingTo
 }
 
 export function findPendingToolCall(messages: UIMessage[]): PendingToolCall | null {
-	return findPending(messages, QUESTION_TOOLS);
+	return findPending(messages, QUESTION_TOOLS) ?? findWaiting(messages);
+}
+
+/** The question that waits while he chats (owner, 2026-10-30): its tool
+ *  part carries the waiting placeholder, and no late answer has arrived
+ *  for it. Oldest first, the order the questions were asked. */
+function findWaiting(messages: UIMessage[]): PendingToolCall | null {
+	const late = new Set<string>();
+	for (const msg of messages) {
+		for (const part of msg.parts) {
+			if (part.type === "data-late-answer") {
+				const id = (part.data as { toolCallId?: unknown } | null)?.toolCallId;
+				if (typeof id === "string") late.add(id);
+			}
+		}
+	}
+	for (const msg of messages) {
+		for (const part of msg.parts) {
+			if (!isToolUIPart(part) || part.state !== "output-available") continue;
+			const tool = part.type.slice("tool-".length);
+			if (!(QUESTION_TOOLS as readonly string[]).includes(tool)) continue;
+			if ((part.output as { waiting?: unknown } | null)?.waiting !== true || late.has(part.toolCallId as string)) continue;
+			return { toolCallId: part.toolCallId as string, tool, input: part.input, waiting: true };
+		}
+	}
+	return null;
+}
+
+/** Is this answer the waiting placeholder (no answer yet)? */
+export function isWaitingAnswer(output: unknown): boolean {
+	return (output as { waiting?: unknown } | null)?.waiting === true;
 }
 
 // ─── Turn activity label (2026-09-19, the “Writing a question…” fix) ──────

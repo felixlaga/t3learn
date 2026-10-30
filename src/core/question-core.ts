@@ -28,6 +28,59 @@ export interface QuizOption {
 	description?: string;
 }
 
+// ─── question formats (owner, 2026-10-30: "not only multiple choice") ──────
+// Eight ways to answer, in two families. The QUIZ family is graded on his
+// screen the moment he submits (the commitment is a value); the EXPLAIN
+// family is typed and graded by the teacher against its committed answer.
+// The teacher picks the format per question; the per-lesson mechanic
+// switch (settings tools.explain) is gone. Absent format = today's shapes.
+
+export const QUIZ_FORMATS = ["choice", "true_false", "spot_error", "order"] as const;
+export type QuizFormat = (typeof QUIZ_FORMATS)[number];
+export const EXPLAIN_FORMATS = ["short", "formula", "next_line", "explain_back"] as const;
+export type ExplainFormat = (typeof EXPLAIN_FORMATS)[number];
+export type QuestionFormat = QuizFormat | ExplainFormat;
+
+/** A persisted quiz call's format (display seam): absent or unknown
+ *  means multiple choice, the shape every old record has. */
+export function normalizeQuizFormat(raw: unknown): QuizFormat {
+	const v = typeof raw === "string" ? stripModelValueDebris(raw) : "";
+	return (QUIZ_FORMATS as readonly string[]).includes(v) ? (v as QuizFormat) : "choice";
+}
+
+/** A persisted explain call's format: absent or unknown means a short
+ *  answer, the shape every old free-recall record has. */
+export function normalizeExplainFormat(raw: unknown): ExplainFormat {
+	const v = typeof raw === "string" ? stripModelValueDebris(raw) : "";
+	return (EXPLAIN_FORMATS as readonly string[]).includes(v) ? (v as ExplainFormat) : "short";
+}
+
+/** The format names the cards show after the question's role. The two
+ *  defaults (choice, short) need no name. */
+export const QUESTION_FORMAT_LABELS: Partial<Record<QuestionFormat, string>> = {
+	true_false: "True or false",
+	spot_error: "Spot the wrong line",
+	order: "Put in order",
+	formula: "Formula",
+	next_line: "Next line",
+	explain_back: "Explain it back",
+};
+
+/** A typed formula or derivation line renders as inline math unless it
+ *  already carries math delimiters. */
+export function asInlineMath(text: string): string {
+	const t = text.trim();
+	return /\$|\\\(|\\\[/.test(t) ? t : `$${t}$`;
+}
+
+/** True or false is a choice between two fixed options. The tool fills
+ *  them in when the model leaves them out, and the card shows them in
+ *  this order. */
+export const TRUE_FALSE_OPTIONS: readonly QuizOption[] = [
+	{ label: "True", value: "true" },
+	{ label: "False", value: "false" },
+];
+
 // ─── tool input schemas (the question contract) ─────────────────────────────
 // Parameter names mirror the prompt docs exactly — keep them in sync.
 
@@ -110,10 +163,12 @@ export function askOptionProblems(options: Array<{ label: string; value?: string
 /** The full quiz authoring contract: option sanity + correctAnswer must be
  *  gradeable. Empty result = a quiz the dock can arm and grade faithfully. */
 export function quizInputProblems(input: {
+	format?: unknown;
 	options: Array<{ label: string; value?: string }>;
 	correctAnswer: string | string[];
 	multiSelect?: boolean;
 }): string[] {
+	const format = normalizeQuizFormat(input.format);
 	const { problems, keys } = optionProblems(input.options);
 
 	// Preserve exact option keys before trying copy-syntax cleanup — the
@@ -131,6 +186,26 @@ export function quizInputProblems(input: {
 					"Copy the exact value (or label) of the intended option — never a paraphrase or slug.",
 			);
 		}
+	}
+	if (format === "order") {
+		// The commitment is the whole sequence: every option exactly once.
+		if (keys.length < 3) problems.push("An order question needs at least 3 steps in options.");
+		if (entries.length !== keys.length || unique.length !== keys.length) {
+			problems.push(
+				"For format order, correctAnswer must be an array listing EVERY option value exactly once, in the correct order.",
+			);
+		}
+		return problems;
+	}
+	if (format === "true_false" && (keys.length !== 2 || !keys.includes("true") || !keys.includes("false"))) {
+		problems.push('For format true_false, leave options out (True and False are added for you) and set correctAnswer to "true" or "false".');
+	}
+	if (format === "spot_error" && keys.length < 3) {
+		problems.push("A spot_error question needs at least 3 lines in options, in their order, with exactly one wrong.");
+	}
+	if (format !== "choice" && unique.length > 1) {
+		problems.push(`Format ${format} has exactly one correct option. Set correctAnswer to a single value.`);
+		return problems;
 	}
 	if (unique.length > 1 && input.multiSelect !== true) {
 		problems.push(
@@ -155,7 +230,20 @@ export function quizInputProblems(input: {
 // and reasoning happens BEFORE the answer is chosen — models emit tool
 // args in schema order, so explanation sits immediately BEFORE correctAnswer.
 // (All consumers read by key; the order is authoring guidance, nothing else.)
+const quizFormatField = Type.Optional(
+	Type.Union([Type.Literal("choice"), Type.Literal("true_false"), Type.Literal("spot_error"), Type.Literal("order")], {
+		description:
+			"How he answers, as a bare word. choice (the default): he picks from the options. " +
+			"true_false: the question is one statement; leave options out (True and False are added for you) and set " +
+			'correctAnswer to "true" or "false". spot_error: options are the lines of a derivation or argument in their ' +
+			"order (3 or more), exactly one of them wrong; correctAnswer is the wrong line's value; he picks it and says why. " +
+			"order: options are the steps of an argument (3 or more); correctAnswer is an ARRAY of every option value in the " +
+			"correct order; he sees the steps shuffled and puts them in order.",
+	}),
+);
+
 export const quizInputBase = Type.Object({
+	format: quizFormatField,
 	question: Type.String({
 		description:
 			"The single quiz question to ask. ONE question per turn: ask, then end your turn — the answer determines the next question.",
@@ -163,7 +251,7 @@ export const quizInputBase = Type.Object({
 	options: Type.Array(Type.Object(quizOptionProps), {
 		minItems: 2,
 		description:
-			"REQUIRED. The answer options (2 or more) as a JSON ARRAY of option objects — never a " +
+			"REQUIRED (except for format true_false). The answer options (2 or more) as a JSON ARRAY of option objects — never a " +
 			"JSON-encoded string. Options only — there is no free-text mode. " +
 			"Give each option a stable `value`; you reference the correct one by that value in correctAnswer. " +
 			"Never add your own 'I don't know' option — that choice is added for you.",
@@ -184,6 +272,7 @@ export const quizInputBase = Type.Object({
 			"REQUIRED. The correct answer as the option value(s) — the `value` field of the option you intend. " +
 			'Single-select: a single string (e.g. "mercury"). Multi-select: an array of strings (e.g. ["belize", "niue"]); ' +
 			"the learner is only correct if their selection matches this set exactly. " +
+			"Format order: an array of every option value, in the correct order. " +
 			"Always pass the value, not a position number — this is self-checking and prevents miscounting. " +
 			"A value that matches no option fails validation and the call is returned to you to fix.",
 	}),
@@ -242,9 +331,9 @@ export function questionNeedsReveal(tool: string, rawInput: unknown, phase: stri
 const predictCheckType = Type.Union([Type.Literal("predict"), Type.Literal("check")], {
 	description:
 		"REQUIRED — the question's role in the teaching cycle, as a bare word (no quotes): predict = posed BEFORE " +
-		"you teach the step (its own turn; the learner answers, then your teaching resolves it — arrives open, never " +
-		"collapsed); check = posed AFTER the step's teaching is complete (arrives collapsed behind the Check your " +
-		"understanding reveal). ONE question per turn either way.",
+		"you teach the node (its own turn; the learner answers, then your teaching resolves it — opens at once); " +
+		"check = posed AFTER the node's explanation is complete (arrives tucked in a bar above his chat box; he opens " +
+		"it once he has read your explanation). ONE question per turn either way.",
 });
 
 
@@ -300,7 +389,24 @@ export const quizDisplayInputSchema = Type.Object({
 // Mechanics doctrine lives in the TOOL DESCRIPTIONS (pi-native ruling),
 // not in the system prompt.
 
+const explainFormatField = Type.Optional(
+	Type.Union([Type.Literal("short"), Type.Literal("formula"), Type.Literal("next_line"), Type.Literal("explain_back")], {
+		description:
+			"How he answers, as a bare word. short (the default): a sentence or two in his own words, in one box. " +
+			"formula: a number or formula he types on one line in LaTeX, with a box for his thinking. " +
+			"next_line: `lines` shows a derivation so far; he writes the line that comes next, in LaTeX. " +
+			"explain_back: he explains a whole idea in his own words, in one big box.",
+	}),
+);
+
 export const explainInputBase = Type.Object({
+	format: explainFormatField,
+	lines: Type.Optional(
+		Type.Array(Type.String(), {
+			description:
+				"next_line only: the derivation so far, one line per entry, LaTeX allowed. He writes the line that follows the last one.",
+		}),
+	),
 	question: Type.String({
 		description:
 			"The single question to ask. ONE question per turn: ask, then end your turn — the answer determines the next.",
@@ -349,9 +455,13 @@ export const explainDisplayInputSchema = Type.Object({
 
 /** The explain authoring contract: the commitment must exist. Empty
  *  result = an explain the dock can arm and the model can grade against. */
-export function explainInputProblems(input: { correctAnswer: string }): string[] {
+export function explainInputProblems(input: { correctAnswer: string; format?: unknown; lines?: unknown }): string[] {
 	if (input.correctAnswer.trim().length === 0) {
 		return ["correctAnswer is required — commit to the full correct answer BEFORE posing the question."];
+	}
+	if (normalizeExplainFormat(input.format) === "next_line") {
+		const lines = Array.isArray(input.lines) ? input.lines.filter((l) => typeof l === "string" && l.trim()) : [];
+		if (lines.length === 0) return ["Format next_line needs `lines`: the derivation so far, at least one line."];
 	}
 	return [];
 }
@@ -420,6 +530,13 @@ export interface QuestionData {
 	question: string;
 	context?: string;
 	mode: QuestionMode;
+	/** How he answers (owner, 2026-10-30). Absent on old records. */
+	format?: QuestionFormat;
+	/** next_line: the derivation so far, shown above his line. */
+	lines?: string[];
+	/** order: the option values in the correct order. NEVER send to the
+	 *  client before answering. */
+	correctOrder?: string[];
 	options: QuizOption[]; // display order (post-shuffle)
 	// quiz only. NEVER send to the client before answering:
 	correctIndices?: number[];
@@ -447,7 +564,14 @@ export interface QuestionAnswerData {
 	 *  Absent on old records and probe answers. */
 	questionType?: QuizQuestionType;
 	questionText: string;
+	/** How he answered (owner, 2026-10-30). Absent on old records. */
+	format?: QuestionFormat;
 	options?: { index: number; label: string }[]; // snapshot for rendering
+	/** order: his order and the correct one, as labels (rendering). */
+	order?: string[];
+	correctOrder?: string[];
+	/** next_line: the derivation he continued (rendering). */
+	lines?: string[];
 	dontKnow: boolean;
 	answers: OptionAnswer[];
 	other?: string; // ask: "Other" free text
@@ -469,6 +593,10 @@ export interface QuestionAnswerData {
 	committed?: string; // explain only (rendering): the model's committed answer
 	explanation?: string; // quiz only (rendering)
 	dismissed?: boolean;
+	/** The question still waits on his screen (owner, 2026-10-30): he
+	 *  chatted instead of answering. The model reads WAITING_NOTE; his real
+	 *  answer arrives later as a late-answer message. */
+	waiting?: boolean;
 	answeredAt: string;
 }
 
@@ -491,6 +619,8 @@ export interface AnswerRequest {
 	thinking?: string; // the reasoning-on-the-question channel (was `note`)
 	readingThinking?: string; // the thinking-while-reading channel (check answers)
 	confidence?: number; // quiz only: 0-100 raw probability — 50 is a real coin flip, always sent (owner, 2026-10-01)
+	/** order: the option values in his order. */
+	order?: string[];
 }
 
 /** The confidence slider's snap stops (owner, 2026-10-01): raw probability
@@ -661,6 +791,24 @@ export function resolveCorrect(
 	return { indices: Array.from(new Set(indices)).sort((a, b) => a - b) };
 }
 
+/** The order the card shows a quiz's options in (owner, 2026-10-30):
+ *  multiple choice shuffles so position never leaks the answer; true or
+ *  false keeps True then False; spot_error keeps the lines in their
+ *  order; order shuffles and never shows the solved order. Seeded by the
+ *  call id so server and client agree. */
+export function displayOptions(format: QuizFormat, options: QuizOption[], seed: string): QuizOption[] {
+	if (format === "spot_error") return options;
+	if (format === "true_false") {
+		const byValue = new Map(options.map((o) => [o.value, o]));
+		return TRUE_FALSE_OPTIONS.map((o) => byValue.get(o.value) ?? o);
+	}
+	const shuffled = shuffleOptions(options, seededRandom(seed));
+	if (format === "order" && shuffled.length > 1 && shuffled.every((o, i) => o.value === options[i]!.value)) {
+		return [...shuffled.slice(1), shuffled[0]!];
+	}
+	return shuffled;
+}
+
 /** Exact-set match: same number of selections, same indices. */
 export function isCorrect(selectedIndices: number[], correctIndices: number[]): boolean {
 	if (selectedIndices.length !== correctIndices.length) return false;
@@ -704,6 +852,7 @@ export function buildAnswer(qd: QuestionData, req: AnswerRequest, tool?: string)
 		readingThinking: req.readingThinking?.trim() || undefined,
 		answeredAt: new Date().toISOString(),
 	};
+	if (qd.format) base.format = qd.format;
 	// resolve selected option values → OptionAnswer (in display order)
 	if (req.values && req.values.length > 0) {
 		const byValue = new Map(qd.options.map((o, i) => [o.value, { ...o, index: i + 1 }]));
@@ -720,18 +869,30 @@ export function buildAnswer(qd: QuestionData, req: AnswerRequest, tool?: string)
 	if (qd.kind === "quiz") {
 		base.correctIndices = qd.correctIndices ?? [];
 		base.explanation = qd.explanation;
-		base.correct = base.dontKnow ? false : isCorrect(base.answers.map((a) => a.index), qd.correctIndices ?? []);
-		// The confidence slider rides on real quiz answers only — never on
-		// "I don't know" (no answer, no probability). Clamped defensively;
-		// the dock snaps to the grid, the record accepts any integer.
-		if (!base.dontKnow && req.confidence !== undefined) {
-			base.confidence = Math.max(0, Math.min(100, Math.round(req.confidence)));
+		if (qd.format === "order") {
+			// The order is the answer: graded as the whole sequence.
+			const labelOf = new Map(qd.options.map((o) => [o.value, o.label]));
+			const order = req.order ?? [];
+			base.order = order.map((v) => labelOf.get(v) ?? v);
+			base.correctOrder = (qd.correctOrder ?? []).map((v) => labelOf.get(v) ?? v);
+			base.correctIndices = [];
+			base.correct =
+				!base.dontKnow && order.length > 0 && order.length === (qd.correctOrder ?? []).length && order.every((v, i) => v === qd.correctOrder![i]);
+		} else {
+			base.correct = base.dontKnow ? false : isCorrect(base.answers.map((a) => a.index), qd.correctIndices ?? []);
 		}
 	}
 	if (qd.kind === "explain") {
 		// No client grading — the model grades in its reply, against the
 		// commitment. The commitment snapshots for the reveal + rendering.
 		base.committed = qd.committedAnswer;
+		if (qd.lines?.length) base.lines = qd.lines;
+	}
+	// The confidence row rides every graded answer (owner, 2026-10-30:
+	// typed answers too) — never "I don't know" (no answer, no
+	// probability). Clamped defensively; the dock snaps to the grid.
+	if ((qd.kind === "quiz" || qd.kind === "explain") && !base.dontKnow && req.confidence !== undefined) {
+		base.confidence = Math.max(0, Math.min(100, Math.round(req.confidence)));
 	}
 	return base;
 }
@@ -762,14 +923,36 @@ export function dismissedAnswer(kind: QuestionKind, questionText: string): Quest
 	};
 }
 
+/** What the model reads when he chats while a question waits (owner,
+ *  2026-10-30): the card stays on his screen, and his real answer comes
+ *  later as its own message. */
+export const WAITING_NOTE =
+	"He has not answered yet. The question stays open on his screen. Reply to his message. Ask no new question until he answers or skips this one.";
+
+/** The result a waiting question gets when he chats instead of answering
+ *  (owner, 2026-10-30): an honest placeholder, never an answer. */
+export function waitingAnswer(kind: QuestionKind, questionText: string, tool?: string): QuestionAnswerData {
+	return {
+		kind,
+		...(tool ? { tool } : {}),
+		questionText,
+		dontKnow: false,
+		answers: [],
+		waiting: true,
+		answeredAt: new Date().toISOString(),
+	};
+}
+
 export function compactAnswerForModel(ad: QuestionAnswerData): Record<string, unknown> {
 	if (ad.dismissed) return { kind: ad.kind, dismissed: true };
+	if (ad.waiting) return { kind: ad.kind, waiting: true, note: WAITING_NOTE };
 	const out: Record<string, unknown> = { kind: ad.kind };
 	if (ad.dontKnow) out.dontKnow = true;
 	// Array.isArray: the seam is called with `unknown` answers (test
 	// fixtures, foreign records) — degrade to omission, never crash.
 	if (Array.isArray(ad.answers) && ad.answers.length > 0)
 		out.answers = ad.answers.map((a) => ({ index: a.index, label: a.label }));
+	if (Array.isArray(ad.order) && ad.order.length > 0) out.order = ad.order;
 	if (ad.text) out.text = ad.text;
 	if (ad.other) out.other = ad.other;
 	// The verdict + stated confidence are the learner's PERFORMANCE — new

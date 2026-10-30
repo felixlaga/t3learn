@@ -7,6 +7,7 @@ import { useChatSession } from "@/components/session";
 import { visibleQueuedSteers } from "@/components/session-core";
 import { SetupDialog } from "@/components/setup-dialog";
 import { Hint } from "@/components/ui/hint";
+import { cn } from "@/lib/utils";
 import { useZeroKeys, ZeroKeysPill } from "@/components/setup-cta";
 import { useStickToBottomContext, type StickToBottomContext } from "use-stick-to-bottom";
 import {
@@ -51,7 +52,7 @@ import { PlanBlock, PlanPopup, latestTree } from "@/components/plan-block";
 import { PlanMarginalia, planExists } from "@/components/plan-window";
 import { MermaidOverlay, SessionMermaidContext } from "@/components/session-overlay";
 import { AbortTurnDialog, type AbortMode } from "@/components/abort-turn-dialog";
-import { ArrowRightIcon, DumbbellIcon, WaypointsIcon } from "lucide-react";
+import { ArrowRightIcon, DumbbellIcon, MinusIcon, WaypointsIcon } from "lucide-react";
 import type { PlanBlockData } from "@/src/core";
 import { QuestionDock } from "@/components/question-dock";
 import { SessionFind } from "@/components/session-find";
@@ -73,6 +74,7 @@ import {
 	activeProblemOf,
 	dismissedAnswer,
 	findPendingToolCall,
+	isWaitingAnswer,
 	phaseAt3,
 	phaseTimeline,
 	teachStepIndex,
@@ -438,6 +440,13 @@ export function Chat({
 	}, []);
 
 	const pending = findPendingToolCall(messages);
+	// Each question call's input by id: a late answer's card re-renders
+	// from the call it answers (the options, the details line).
+	const callInputs = useMemo(() => {
+		const map = new Map<string, unknown>();
+		for (const m of messages) for (const p of m.parts) if (p.type.startsWith("tool-") && typeof p.toolCallId === "string") map.set(p.toolCallId, p.input);
+		return map;
+	}, [messages]);
 	// The abort handler reads the pending question from a ref (the window
 	// listener is mount-scoped; the value it needs is render-scoped).
 	const pendingRef = useRef(pending);
@@ -659,8 +668,10 @@ export function Chat({
 	// server's registry mutex is the structural gate; this is the
 	// affordance).
 	const [compacting, setCompacting] = useState(initiallyCompacting);
+	// The chat box stays a chat box while a question is open (owner,
+	// 2026-10-30): the server lets the question wait and the card stays up.
 	const canSend =
-		(text.trim().length > 0 || dictation.active) && !pending && !activeProblem && !compacting;
+		(text.trim().length > 0 || dictation.active) && !activeProblem && !compacting;
 
 	/* THE PRACTICE PAUSE (owner round 16): between problems — practice
 	 * kind, nothing active, nothing in flight, and at least one problem
@@ -1108,7 +1119,7 @@ export function Chat({
 	});
 
 	const onSend = () => {
-		if (pending || compacting) return;
+		if (compacting) return;
 		/* FINISH DICTATION FIRST (owner, 2026-10-01): a learner who keeps
 		 * talking right through Enter must not lose the tail — stop the run,
 		 * let the last finals land in the composer, then send the REF value
@@ -1120,7 +1131,7 @@ export function Chat({
 		void dictation.finish().then(doSteerOrSend);
 	};
 	const doSend = () => {
-		if (busy || pending || compacting) return;
+		if (busy || compacting) return;
 		const t = textRef.current.trim();
 		if (!t || attachments.uploading || attachments.pdf) return;
 		setAttachmentError(undefined);
@@ -1141,7 +1152,7 @@ export function Chat({
 	 * time the send's POST resolved, so the steer lands. Idle takes the
 	 * plain send; a raced settle 409s and falls back to exactly that. */
 	const doSteerOrSend = () => {
-		if (pending || compacting || attachments.uploading || attachments.pdf || (busy && attachments.items.length)) return;
+		if (compacting || attachments.uploading || attachments.pdf || (busy && attachments.items.length)) return;
 		const t = textRef.current.trim();
 		if (!t) return;
 		if (busy) {
@@ -1348,6 +1359,12 @@ export function Chat({
 												return <AttachmentCards key={pi} attachments={(part.data as { attachments: AttachmentRef[] }).attachments} onSelectPdf={busy || compacting ? undefined : attachments.selectPdf} />;
 											case "data-practice-thinking":
 												return <ThinkingCard key={pi} data={part.data as PracticeThinkingData} />;
+											case "data-late-answer": {
+												// An answer to a question that waited while he chatted
+												// (owner, 2026-10-30): the card shows where he answered.
+												const late = part.data as { toolCallId: string; answer: QuestionAnswerData };
+												return <AnsweredCard key={pi} answer={late.answer} input={callInputs.get(late.toolCallId)} />;
+											}
 											case "data-practice-next":
 												// The learner's move-on signal (owner round 16): a compact
 												// centered mono-caps line — chrome, the dismissal register.
@@ -1492,7 +1509,9 @@ export function Chat({
 													case "tool-recall": {
 														// Pending/streaming questions live in the dock, not the
 														// transcript; answered ones render as graded records.
-														if (part.state === "output-available") {
+														// A question that waits while he chats has no answer
+														// yet: it lives in the popover until it arrives.
+														if (part.state === "output-available" && !isWaitingAnswer(part.output)) {
 															return (
 																<AnsweredCard key={pi} answer={part.output as QuestionAnswerData} input={part.input} />
 															);
@@ -1903,9 +1922,10 @@ function DockOverlay({
 			setExpanded(arrival.expanded);
 			setRevealed(arrival.revealed);
 		} else if (pendingId) {
-			// Probe arrival (flicker round): open iff following at the bottom.
-			// Painted in THIS render — no stale-open frame, no after-paint flip.
-			setExpanded(probeArrivalExpanded(atBottomRef.current));
+			// Guesses and probe questions open at once (owner, 2026-10-30): the
+			// card floats above the chat box, so it hides no teaching he still
+			// has to read. Painted in THIS render — no stale-open frame.
+			setExpanded(true);
 		}
 	}
 
@@ -1975,6 +1995,19 @@ function DockOverlay({
 			setSbInset(Math.round((el.offsetWidth - el.clientWidth) / 2));
 			setDockAvailableH(available);
 			if (!expanded || (!pending && !practice)) { setDockOverflow(false); return; }
+			// The question card floats above the dock (owner, 2026-10-30): its
+			// room is the scroller above the composer, its question area the
+			// part of that room its own controls leave over.
+			if (pending) {
+				const pop = questionRef.current;
+				const area = pop?.querySelector<HTMLElement>("[data-dock-scroll]");
+				if (!pop || !area) return;
+				const room = Math.max(1, el.clientHeight - block.offsetHeight - 24);
+				const controls = Math.max(0, pop.offsetHeight - area.offsetHeight);
+				setDockMaxH(Math.max(120, room - controls));
+				setDockOverflow(false);
+				return;
+			}
 			// A folding animation temporarily changes the shell's height, not
 			// the space its controls need. Measure after that morph settles.
 			if (shellRef.current?.getAnimations().some(a => a.playState === "running")) {
@@ -2001,6 +2034,7 @@ function DockOverlay({
 			observer = new ResizeObserver(schedule);
 			observer.observe(el);
 			if (block.firstElementChild) observer.observe(block.firstElementChild);
+			if (questionRef.current) observer.observe(questionRef.current);
 			measure();
 		};
 		connect();
@@ -2043,6 +2077,24 @@ function DockOverlay({
 		root.addEventListener("wheel", onWheel, { passive: false });
 		return () => root.removeEventListener("wheel", onWheel);
 	}, [scrollRef]);
+
+	// THE QUESTION CARD (owner, 2026-10-30): a popover above the chat box.
+	// The minus or any click outside it tucks it into the bar; the bar
+	// opens it again. Scrolling never changes it. Dialogs keep their own
+	// clicks.
+	const questionRef = useRef<HTMLDivElement>(null);
+	useEffect(() => {
+		if (!pending || !expanded) return;
+		const onDown = (e: PointerEvent) => {
+			const pop = questionRef.current;
+			const t = e.target as Element | null;
+			if (!pop || !t || pop.contains(t)) return;
+			if (t.closest?.('[role="dialog"], [data-radix-popper-content-wrapper], [data-lh-menu]')) return;
+			setExpanded(false);
+		};
+		document.addEventListener("pointerdown", onDown, true);
+		return () => document.removeEventListener("pointerdown", onDown, true);
+	}, [pending?.toolCallId, expanded]);
 
 	// ── The reserve: the spacer's height, reported upward ──
 	// Grows immediately (typing, new variants). NEVER drops while a question
@@ -2116,11 +2168,7 @@ function DockOverlay({
 		if (b) offer(b.getBoundingClientRect().height);
 	};
 
-	const mode = pending
-		? `question:${pending.toolCallId}`
-		: practice
-			? `practice:${practice.toolCallId}`
-			: "chat";
+	const mode = practice ? `practice:${practice.toolCallId}` : "chat";
 	// The opening variant of a session appears instantly — the fade/rise is
 	// reserved for mid-session transitions.
 	const initialModeRef = useRef(mode);
@@ -2146,7 +2194,7 @@ function DockOverlay({
 	// term (the fold) belongs to EVERY docked variant — question AND
 	// practice (owner fix, 2026-10-06). Typing growth keeps the key and
 	// never animates; the fold/unfold morphs like teaching always has.
-	const stateKey = dockStateKey(mode, !!pending || !!practice, expanded);
+	const stateKey = dockStateKey(mode, !!practice, expanded);
 	const prevRef = useRef<{ key: string; height: number } | null>(null);
 	useIsoLayoutEffect(() => {
 		const el = shellRef.current;
@@ -2186,21 +2234,26 @@ function DockOverlay({
 				overflowY: dockOverflow ? "auto" : undefined,
 				pointerEvents: dockOverflow ? "auto" : undefined,
 			} as React.CSSProperties}>
-				<div className={DOCK}>
+				<div className={cn(DOCK, "relative")}>
 					{setupCta}
 					{/* The queued-steer indicator (owner spec 2026-10-03): quiet
 					    one-liners above the shell - right-aligned to where its corner
 					    rounding starts, truncated, no background, no container. A
 					    line dies when its card lands (visibleQueuedSteers). */}
 					<QueuedSteersBody steers={queuedSteers} />
-					<ComposerSurface ref={shellRef} className="overflow-hidden">
-						{expanded && (pending || practice) && <div className="flex justify-end px-3 pt-2"><button type="button" aria-label="Close question panel" onClick={() => setExpanded(false)} className="rounded px-2 py-1 text-xs text-muted-foreground hover:bg-accent">Close question</button></div>}
+					{/* The question card (owner, 2026-10-30): ONE mount that floats
+					    above the dock while open and sits in flow as the bar while
+					    tucked — a class swap, never a remount, so a half-made answer
+					    survives. The chat box below stays a chat box. */}
+					{pending && (
 						<div
-						ref={contentRef}
-						key={mode}
-						className={mode === initialModeRef.current ? undefined : "dock-variant"}
-					>
-							{pending ? (
+							ref={questionRef}
+							key={pending.toolCallId}
+							data-testid="question-popover"
+							data-expanded={expanded ? "true" : "false"}
+							className={expanded ? "pointer-events-auto absolute inset-x-4 bottom-full z-20 mb-2" : "pointer-events-auto mb-2"}
+						>
+							<ComposerSurface className={cn("overflow-hidden", expanded && "shadow-[0_18px_50px_-12px_rgb(0_0_0/55%)]")}>
 								<QuestionDock
 									attachmentDraft={attachmentDraft}
 									toolName={pending.tool as "quiz" | "probe" | "ask_user_question" | "explain" | "recall"}
@@ -2212,10 +2265,32 @@ function DockOverlay({
 									onExpand={expandAndReveal}
 									onSubmit={onSubmitAnswer}
 									onEscape={dictationCancel}
-									dictationClaim={!revealPending}
+									dictationClaim={expanded}
 									compactionRunning={compactionRunning}
+									headerAction={
+										<Hint label="Tuck the question away" side="top">
+											<button
+												type="button"
+												data-testid="question-tuck"
+												aria-label="Tuck the question away"
+												onClick={() => setExpanded(false)}
+												className="flex size-7 shrink-0 items-center justify-center rounded-md border border-border/60 text-muted-foreground normal-case transition-colors hover:bg-accent hover:text-foreground"
+											>
+												<MinusIcon className="size-4" />
+											</button>
+										</Hint>
+									}
 								/>
-							) : practice ? (
+							</ComposerSurface>
+						</div>
+					)}
+					<ComposerSurface ref={shellRef} className="overflow-hidden">
+						<div
+						ref={contentRef}
+						key={mode}
+						className={mode === initialModeRef.current ? undefined : "dock-variant"}
+					>
+							{practice ? (
 								<PracticeDock
 									attachmentDraft={attachmentDraft}
 									problemCallId={practice.toolCallId}

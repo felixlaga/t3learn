@@ -26,7 +26,7 @@ import { parseAttachments, type AttachmentRef } from "./attachments.ts";
  * turn rides one composition.
  */
 
-import type { QuestionAnswerData } from "./question-core.ts";
+import { waitingAnswer, type QuestionAnswerData } from "./question-core.ts";
 import type { LhMessage } from "./native-messages.ts";
 import {
 	activeProblemOf,
@@ -34,11 +34,13 @@ import {
 	danglingQuestionOf,
 	newAnswerResult,
 	newAttachmentMessage,
+	newLateAnswerMessage,
 	newNextMessage,
 	newProblemDismissedMarker,
 	newThinkingMessage,
 	newUserMessage,
 	pendingProblemDismissalOf,
+	waitingQuestionOf,
 } from "./native-messages.ts";
 import { QUESTION_TOOLS, toolQuestionKind } from "./pending.ts";
 
@@ -140,13 +142,18 @@ export function dismissAppends(record: { messages: LhMessage[] }, input: Dismiss
 		return [newProblemDismissedMarker(input.problemCallId)];
 	}
 	const pending = danglingQuestionOf(record.messages);
-	if (!pending || pending.toolCallId !== input.toolCallId) {
+	const waiting = pending ? null : waitingQuestionOf(record.messages);
+	const target = pending ?? waiting;
+	if (!target || target.toolCallId !== input.toolCallId) {
 		throw new ChatInputError("dismiss input targets no pending question call");
 	}
-	if (input.answer.kind !== toolQuestionKind(pending.tool)) {
+	if (input.answer.kind !== toolQuestionKind(target.tool)) {
 		throw new ChatInputError("dismiss input's answer kind does not match the question");
 	}
-	return [newAnswerResult(input.toolCallId, pending.tool, input.answer)];
+	// A skip of a question that waited while he chatted arrives as its own
+	// message: the call's result already holds the waiting placeholder.
+	if (waiting) return [newLateAnswerMessage(input.toolCallId, waiting.tool, input.answer)];
+	return [newAnswerResult(input.toolCallId, target.tool, input.answer)];
 }
 
 /** A malformed input event (the honest 400 — the orphan-trap discipline). */
@@ -205,13 +212,20 @@ export function inputAppends(
 ): LhMessage[] {
 	switch (input.type) {
 		case "text":
-			return [...dismissalConclusion(record), newUserMessage(input.text), ...(input.attachments?.length ? [newAttachmentMessage(input.attachments)] : [])];
+			return [...dismissalConclusion(record), ...waitingAppends(record), newUserMessage(input.text), ...(input.attachments?.length ? [newAttachmentMessage(input.attachments)] : [])];
 		case "answer": {
+			const answerAttachments = input.answer.attachments?.length ? [newAttachmentMessage(input.answer.attachments)] : [];
 			const pending = danglingQuestionOf(record.messages);
-			if (!pending || pending.toolCallId !== input.toolCallId) {
-				throw new ChatInputError("answer input targets no pending question call");
+			if (pending && pending.toolCallId === input.toolCallId) {
+				return [newAnswerResult(input.toolCallId, pending.tool, input.answer), ...answerAttachments];
 			}
-			return [newAnswerResult(input.toolCallId, pending.tool, input.answer), ...(input.answer.attachments?.length ? [newAttachmentMessage(input.answer.attachments)] : [])];
+			// The question waited while he chatted (owner, 2026-10-30): its
+			// answer arrives as its own message, after the chat.
+			const waiting = pending ? null : waitingQuestionOf(record.messages);
+			if (waiting && waiting.toolCallId === input.toolCallId) {
+				return [newLateAnswerMessage(input.toolCallId, waiting.tool, input.answer), ...answerAttachments];
+			}
+			throw new ChatInputError("answer input targets no pending question call");
 		}
 		case "continue":
 			return dismissalConclusion(record);
@@ -236,6 +250,24 @@ export function inputAppends(
 			return [...dismissalConclusion(record), newNextMessage()];
 		}
 	}
+}
+
+/** Chat while a question is open (owner, 2026-10-30): the bottom box is
+ *  only for chat, so his message never answers the question. The open
+ *  call gets the waiting placeholder as its result (the provider needs
+ *  one before the next user message); the card stays on his screen until
+ *  he answers or skips it. Pure; empty when no question dangles. */
+export function waitingAppends(record: { messages: LhMessage[] }): LhMessage[] {
+	// Every open call of the turn waits (parallel questions, rare): each
+	// gets its placeholder, adjacent to the asking message as the provider
+	// requires, and the cards then come back one at a time, oldest first.
+	const out: LhMessage[] = [];
+	for (let pending = danglingQuestionOf(record.messages); pending; pending = danglingQuestionOf([...record.messages, ...out])) {
+		const question = (pending.input as { question?: unknown } | null)?.question;
+		out.push(newAnswerResult(pending.toolCallId, pending.tool, waitingAnswer(toolQuestionKind(pending.tool), typeof question === "string" ? question : "", pending.tool)));
+		if (out.length > 8) break;
+	}
+	return out;
 }
 
 /** The deferred conclude synthesis (owner ruling, 2026-10-04): a

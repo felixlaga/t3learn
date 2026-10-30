@@ -58,11 +58,19 @@ export function learningProgress(
 				for (const part of message.content) if (part.type === "toolCall" && LEARNING_TOOLS.has(part.name)) calls.set(part.id, part.name);
 			} else if (message.role === "user" || message.role === "custom" && ["practice-thinking", "practice-next"].includes(message.customType)) {
 				if (add(message.timestamp, false)) participated = true;
+			} else if (message.role === "custom" && message.customType === "late-answer") {
+				// An answer that waited while he chatted (owner, 2026-10-30).
+				const late = message.details as { toolCallId?: string; tool?: string; answer?: Record<string, unknown> } | undefined;
+				const detail = late?.answer;
+				if (!late?.toolCallId || calls.get(late.toolCallId) !== late.tool || seenAnswers.has(late.toolCallId) || !detail || typeof detail !== "object") continue;
+				if (detail.dismissed || !["quiz", "explain"].includes(String(detail.kind))) continue;
+				if (typeof detail.answeredAt !== "string" || !Array.isArray(detail.answers) || typeof detail.dontKnow !== "boolean") continue;
+				if (add(Date.parse(detail.answeredAt), true)) { seenAnswers.add(late.toolCallId); answers++; participated = true; }
 			} else if (message.role === "toolResult" && !message.isError && calls.get(message.toolCallId) === message.toolName && !seenAnswers.has(message.toolCallId)) {
 				const raw = message.details;
 				if (!raw || typeof raw !== "object" || Array.isArray(raw)) continue;
 				const detail = raw as Record<string, unknown>;
-				if (detail.dismissed || !["quiz", "explain"].includes(String(detail.kind))) continue;
+				if (detail.dismissed || detail.waiting || !["quiz", "explain"].includes(String(detail.kind))) continue;
 				// Require the structured answer record, excluding validation errors and synthetic tool results.
 				if (typeof detail.answeredAt !== "string" || !Array.isArray(detail.answers) || typeof detail.dontKnow !== "boolean") continue;
 				const timestamp = Date.parse(detail.answeredAt);

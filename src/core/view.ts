@@ -423,6 +423,16 @@ function projectMarker(marker: LhMarkerMessage, out: LhViewMessage[]): void {
 			});
 			return;
 		}
+		case "late-answer": {
+			// An answer to a question that waited while he chatted (owner,
+			// 2026-10-30): his answered card, at the moment he answered.
+			out.push({
+				id: marker.id,
+				role: "user",
+				parts: [{ type: "data-late-answer", id: `la_${marker.id}`, data: marker.details }],
+			});
+			return;
+		}
 		case "problem-dismissed":
 			// UI-only (the ask-style dismissal): the synthesized conclude
 			// pair — which rides the NEXT input — carries the record's face.

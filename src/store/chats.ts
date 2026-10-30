@@ -15,7 +15,7 @@ import type { ChatStore } from "../core/ports.ts";
 import type { ChatRecord, ChatSettings, ChatSummary, ExtractionRunUsage, PlanTree, TurnUsage } from "../core/contracts.ts";
 import { CURRENT_CHAT_VERSION } from "../core/contracts.ts";
 import type { LhMessage } from "../core/native-messages.ts";
-import { activeProblemOf, danglingQuestionOf } from "../core/native-messages.ts";
+import { activeProblemOf, openQuestionOf } from "../core/native-messages.ts";
 import { phaseAt3Lh } from "../core/phases.ts";
 
 function chatFile(id: string): string {
@@ -106,7 +106,9 @@ function listChats(): ChatSummary[] {
 						// native-messages.ts danglingQuestionOf). Liveness (busy) is
 						// NOT record-derived — the API route merges it (ChatListItem).
 						phase: phaseAt3Lh(messages),
-						pendingQuestion: danglingQuestionOf(messages) !== null,
+						// A question that waits while he chats is still his to answer
+						// (owner, 2026-10-30).
+						pendingQuestion: openQuestionOf(messages) !== null,
 					};
 				} catch (err) {
 					console.error(`[chat ${summary.id}] summary projection failed:`, err);

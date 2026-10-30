@@ -1245,12 +1245,13 @@ it("explain tool call persists as a pending part; the free-text answer reveals t
 	const chat = createConfiguredChat("Test: explain mechanic");
 	createdChats.push(chat.id);
 
-	// Free-recall armed: the mechanic swap is the ONLY change to the registry.
+	// Both quizzing tools, always (owner, 2026-10-30): the old switch key
+	// is ignored, and the teacher picks the format per question.
 	const tools = createTeacherTools(
 		{ chatId: chat.id, chatStore, jobStore, spawn: () => {} },
 		{ explain: true },
 	);
-	assert.ok(tools.explain && !tools.quiz, "explain armed, quiz dropped — one quizzing tool");
+	assert.ok(tools.explain && tools.quiz, "both quizzing tools are armed");
 
 	const factory: Parameters<typeof handleChatRequest>[1] = (opts) =>
 		createTeacherAgent(undefined, { engine, messages: opts.messages, tools });

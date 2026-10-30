@@ -47,7 +47,7 @@ export function Composer({
 	autoFocus,
 	inputRef,
 	onEscape,
-	placeholder = "Ask, answer, or steer the lesson…",
+	placeholder = "Chat with your teacher. Ask anything, or say what to explain better.",
 	attachments,
 	nextProblem = false,
 	onNext,
@@ -67,7 +67,8 @@ export function Composer({
 	 *  when absent — Esc otherwise means nothing in the composer. */
 	onEscape?: () => void;
 	/** The textarea's placeholder (owner refinement round, 2026-09-24):
-	 *  active sessions read "Ask, answer, or steer the lesson…"; the fresh
+	 *  active sessions read "Chat with your teacher…" (owner, 2026-10-30:
+	 *  the box is only for chat, answers go in the question card); the fresh
 	 *  new-session page asks the graph view's opening question instead. */
 	placeholder?: string;
 	/** The practice pause is live (owner round 16): Enter on the empty

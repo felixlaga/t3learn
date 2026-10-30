@@ -18,9 +18,13 @@ import type { ToolResultMessage } from "@earendil-works/pi-ai";
 import {
 	needsContinuation,
 	measuredContextTokens,
+	danglingQuestionOf,
 	newAnswerResult,
+	newLateAnswerMessage,
 	newNextMessage,
 	newProblemDismissedMarker,
+	waitingAppends,
+	waitingQuestionOf,
 	newThinkingMessage,
 	newUserMessage,
 	newAttachmentMessage,
@@ -574,7 +578,12 @@ export class SessionModel {
 		// write-ahead will persist (inputAppends), with LOCAL ids so
 		// adoption can tell them from the record's absorbed copies.
 		const optimistic: LhMessage[] = [];
-		if (input.type === "text") optimistic.push({ ...newUserMessage(input.text), id: localId() });
+		if (input.type === "text") {
+			// A question open while he chats waits (owner, 2026-10-30): its
+			// placeholder result lands ahead of his message, as on the server.
+			for (const w of waitingAppends({ messages: [...this.base, ...this.tail] })) optimistic.push({ ...w, id: localId() });
+			optimistic.push({ ...newUserMessage(input.text), id: localId() });
+		}
 		else if (input.type === "thinking") {
 			// The practice submissions (2026-10-04): the marker lands
 			// optimistically — the card renders from its details the
@@ -585,8 +594,7 @@ export class SessionModel {
 			// renders the instant the chip/Enter fires.
 			optimistic.push({ ...newNextMessage(), id: localId() });
 		} else if (input.type === "answer") {
-			const tool = pendingCallTool([...this.base, ...this.tail], input.toolCallId) ?? "quiz";
-			optimistic.push({ ...newAnswerResult(input.toolCallId, tool, input.answer), id: localId() });
+			optimistic.push({ ...this.answerAppend(input.toolCallId, input.answer), id: localId() });
 		}
 		const attachments = input.type === "answer" ? input.answer.attachments : input.type === "text" || input.type === "thinking" ? input.attachments : undefined;
 		if (attachments?.length) optimistic.push({ ...newAttachmentMessage(attachments), id: localId() });
@@ -680,6 +688,16 @@ export class SessionModel {
 		}
 	}
 
+	/** The answer's optimistic append, as the server will write it: the
+	 *  call's tool result, or a late answer when the question waited while
+	 *  he chatted (owner, 2026-10-30). */
+	private answerAppend(toolCallId: string, answer: QuestionAnswerData): LhMessage {
+		const messages = [...this.base, ...this.tail];
+		const tool = pendingCallTool(messages, toolCallId) ?? "quiz";
+		const waiting = danglingQuestionOf(messages) ? null : waitingQuestionOf(messages);
+		return waiting?.toolCallId === toolCallId ? newLateAnswerMessage(toolCallId, tool, answer) : newAnswerResult(toolCallId, tool, answer);
+	}
+
 	/** The answer path (the dock): the answer IS the question call's tool
 	 *  result (fork 1), riding as its input event. */
 	submitAnswer(tool: string, toolCallId: string, output: QuestionAnswerData): Promise<void> {
@@ -695,9 +713,9 @@ export class SessionModel {
 	 * (or any later refetch) replaces the optimistic append with truth. */
 	async dismissQuestion(toolCallId: string, answer: QuestionAnswerData): Promise<void> {
 		if (!this.readyRef) return;
-		const tool = pendingCallTool([...this.base, ...this.tail], toolCallId) ?? "quiz";
+		const append = this.answerAppend(toolCallId, answer);
 		this.mutate(() => {
-			this.tail = [...this.tail, { ...newAnswerResult(toolCallId, tool, answer), id: localId() }];
+			this.tail = [...this.tail, { ...append, id: localId() }];
 		});
 		try {
 			const res = await this.fetch(`/api/chats/${this.chatId}/dismiss`, {

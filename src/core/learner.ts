@@ -355,6 +355,9 @@ export function learnerTextOf(messages: readonly LhMessage[]): { texts: string[]
 		} else if (m.role === "toolResult" && (QUESTION_TOOLS as readonly string[]).includes(m.toolName)) {
 			const a = m.details as Partial<QuestionAnswerData> | undefined;
 			if (a && typeof a === "object") push(m.id, [a.text, a.other, a.thinking ?? a.note, a.readingThinking]);
+		} else if (m.role === "custom" && m.customType === "late-answer") {
+			const a = (m.details as { answer?: Partial<QuestionAnswerData> } | undefined)?.answer;
+			if (a && typeof a === "object") push(m.id, [a.text, a.other, a.thinking ?? a.note]);
 		} else if (m.role === "custom" && m.customType === "practice-thinking") {
 			push(m.id, [(m.details as { text?: string } | undefined)?.text]);
 		}
@@ -370,8 +373,8 @@ export function learnerInputsAfter(messages: readonly LhMessage[], cursor: strin
 
 function isLearnerInput(m: LhMessage): boolean {
 	return m.role === "user"
-		|| (m.role === "toolResult" && (QUESTION_TOOLS as readonly string[]).includes(m.toolName))
-		|| (m.role === "custom" && m.customType === "practice-thinking");
+		|| (m.role === "toolResult" && (QUESTION_TOOLS as readonly string[]).includes(m.toolName) && !(m.details as { waiting?: boolean } | undefined)?.waiting)
+		|| (m.role === "custom" && (m.customType === "practice-thinking" || m.customType === "late-answer"));
 }
 
 const clip = (text: string, max: number) => (text.length > max ? `${text.slice(0, max)}…` : text);
@@ -395,8 +398,14 @@ export function renderForReader(messages: readonly LhMessage[], cursor: string |
 			const text = typeof m.content === "string" ? m.content : m.content.map((c) => (c.type === "text" ? c.text : "")).join("\n");
 			if (text.trim()) { blocks.push(`LEARNER [${m.id}] wrote:\n${clip(text.trim(), 2500)}`); learnerMessageIds.push(m.id); }
 		} else if (m.role === "toolResult" && (QUESTION_TOOLS as readonly string[]).includes(m.toolName)) {
+			if ((m.details as { waiting?: boolean } | undefined)?.waiting) continue; // no answer yet
 			const answer = m.details && typeof m.details === "object" ? compactAnswerForModel(m.details as unknown as QuestionAnswerData) : {};
 			blocks.push(`LEARNER [${m.id}] answered ${m.toolName}:\n${clip(JSON.stringify(answer), 2500)}`);
+			learnerMessageIds.push(m.id);
+		} else if (m.role === "custom" && m.customType === "late-answer") {
+			const late = m.details as { tool?: string; answer?: QuestionAnswerData } | undefined;
+			if (!late?.answer) continue;
+			blocks.push(`LEARNER [${m.id}] answered ${late.tool ?? "a question"} (it waited while he chatted):\n${clip(JSON.stringify(compactAnswerForModel(late.answer)), 2500)}`);
 			learnerMessageIds.push(m.id);
 		} else if (m.role === "custom" && m.customType === "practice-thinking") {
 			const text = (m.details as { text?: string } | undefined)?.text ?? "";

@@ -2,22 +2,27 @@
 
 import { AttachmentDetails, AttachmentPicker, useAttachments, type AttachmentDraft } from "./attachments";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { ArrowDownIcon, ChevronRightIcon, PlayIcon } from "lucide-react";
+import { ArrowDownIcon, ArrowUpIcon, ChevronRightIcon, PlayIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { finishDictation, isDictationActive, joinDictation, useDictationTarget } from "@/components/dictation";
 import { useEnterSubmits } from "@/components/enter-submits";
 import { MessageResponse } from "@/components/ai-elements/message";
 import { cn } from "@/lib/utils";
 import {
+	asInlineMath,
 	buildAnswer,
+	coerceCorrectAnswer,
+	dismissedAnswer,
+	displayOptions,
+	normalizeExplainFormat,
+	normalizeQuizFormat,
 	normalizeQuizType,
+	QUESTION_FORMAT_LABELS,
 	CONFIDENCE_STOPS,
 	DEFAULT_CONFIDENCE_INDEX,
 	emptyDockSelection,
 	normalizeOptions,
 	resolveCorrect,
-	seededRandom,
-	shuffleOptions,
 	toolQuestionKind,
 	parseAskInput,
 	parseQuizInput,
@@ -87,6 +92,9 @@ export interface QuestionDockProps {
 	 *  during the reading; the dock reclaims on reveal. Default true (probe
 	 *  questions, predictions, old callers). */
 	dictationClaim?: boolean;
+	/** A control for the card's header row (the popover's minus, owner
+	 *  2026-10-30): it stays in view while the question scrolls. */
+	headerAction?: React.ReactNode;
 	/** Compaction is running for this chat (owner round 14): the answer
 	 *  POST would block on the server's compaction gate — disable submit
 	 *  and say so in the hint row. The server registry is the real gate;
@@ -107,6 +115,7 @@ export function QuestionDock({
 	dictationClaim = true,
 	compactionRunning = false,
 	attachmentDraft,
+	headerAction,
 }: QuestionDockProps) {
 	// The probe-phase names (owner, 2026-10-09) canonicalize onto their
 	// teach twins for every dock concern — parse dispatch, labels, kinds:
@@ -162,6 +171,7 @@ export function QuestionDock({
 					dictationClaim={dictationClaim}
 					compactionRunning={compactionRunning}
 					attachmentDraft={attachmentDraft}
+					headerAction={headerAction}
 				/>
 			</div>
 		</>
@@ -258,6 +268,7 @@ function QuestionDockForm({
 	dictationClaim = true,
 	compactionRunning = false,
 	attachmentDraft,
+	headerAction,
 }: Omit<QuestionDockProps, "expanded" | "onExpand" | "reveal">) {
 	const kind = toolQuestionKind(toolName);
 
@@ -283,7 +294,11 @@ function QuestionDockForm({
 		const options = normalizeOptions(
 			(quizInput?.options ?? askInput?.options ?? []) as { label: string; value?: string }[],
 		);
-		const ordered = kind === "quiz" && options.length > 0 ? shuffleOptions(options, seededRandom(toolCallId)) : options;
+		// The format (owner, 2026-10-30) decides the display order: choice and
+		// order shuffle, true or false and spot_error keep theirs.
+		const quizFormat = kind === "quiz" ? normalizeQuizFormat((input as { format?: unknown }).format) : undefined;
+		const explainFormat = kind === "explain" ? normalizeExplainFormat((input as { format?: unknown }).format) : undefined;
+		const ordered = quizFormat && options.length > 0 ? displayOptions(quizFormat, options, toolCallId) : options;
 		const q: QuestionData = {
 			id: toolCallId,
 			kind,
@@ -293,10 +308,15 @@ function QuestionDockForm({
 			question: input.question,
 			context: input.details,
 			mode,
+			...(quizFormat || explainFormat ? { format: quizFormat ?? explainFormat } : {}),
 			options: ordered,
 			createdAt: new Date().toISOString(),
 		};
-		if (quizInput) {
+		if (quizInput && quizFormat === "order") {
+			q.correctOrder = coerceCorrectAnswer(quizInput.correctAnswer, options.map((o) => o.value));
+			q.correctIndices = [];
+			q.explanation = quizInput.explanation;
+		} else if (quizInput) {
 			const resolved = resolveCorrect(quizInput.correctAnswer, ordered);
 			if (resolved.error) console.error("[quiz] correctAnswer did not resolve:", resolved.error);
 			q.correctIndices = resolved.indices;
@@ -308,6 +328,7 @@ function QuestionDockForm({
 			// One field, reasoning included — no separate explanation
 			// (owner ruling 2026-09-27).
 			q.committedAnswer = explainInput.correctAnswer;
+			if (explainFormat === "next_line" && Array.isArray(explainInput.lines)) q.lines = explainInput.lines.filter((l) => typeof l === "string" && l.trim());
 		}
 		return q;
 	}, [toolCallId, kind, input]);
@@ -335,6 +356,22 @@ function QuestionDockForm({
 	// between questions, so each question starts fresh at 50.
 	const [confIdx, setConfIdx] = useState<number>(DEFAULT_CONFIDENCE_INDEX);
 	const selectMode: SelectMode = qd.mode === "multi-select" ? "multi-select" : "single-select";
+	// The formats (owner, 2026-10-30). A typed line (formula, next line)
+	// gets its own one-line field plus the thinking box; short answers and
+	// explain-backs keep one box, because the answer is the thinking.
+	const format = qd.format;
+	const typedLine = format === "formula" || format === "next_line";
+	const [order, setOrder] = useState<string[]>(() => qd.options.map((o) => o.value));
+	const moveStep = (i: number, dir: -1 | 1) =>
+		setOrder((prev) => {
+			const j = i + dir;
+			if (j < 0 || j >= prev.length) return prev;
+			const next = [...prev];
+			[next[i], next[j]] = [next[j]!, next[i]!];
+			return next;
+		});
+	const [line, setLine] = useState("");
+	const lineRef = useRef("");
 
 	// The PRIMARY dictation input (owner, STT round 1): while a question
 	// waits, dictated finals land HERE, never in the hidden composer — text
@@ -347,7 +384,7 @@ function QuestionDockForm({
 				// Ref-first (see the refs block above): the join is computed from
 				// the mirror, then both mirrors agree with state — a submit
 				// resuming post-finish reads the tail, never a stale closure.
-				if (qd.mode === "text") {
+				if (qd.mode === "text" && !typedLine) {
 					const v = joinDictation(answerTextRef.current, t);
 					answerTextRef.current = v;
 					setText(v);
@@ -357,7 +394,7 @@ function QuestionDockForm({
 					setThinking(v);
 				}
 			},
-			[qd.mode],
+			[qd.mode, typedLine],
 		),
 		// Released while a teach check sits unrevealed (owner 2026-10-03):
 		// the reading-thinking field owns dictated speech during the reading.
@@ -366,10 +403,13 @@ function QuestionDockForm({
 
 	const toggle = (idx: number) => setSel(toggleOption(selectMode, sel, idx));
 
-	const canSubmit =
-		qd.mode === "text"
+	const canSubmit = typedLine
+		? line.trim().length > 0
+		: qd.mode === "text"
 			? text.trim().length > 0
-			: sel.dontKnow || (sel.otherSelected && other.trim().length > 0) || sel.selected.size > 0;
+			: format === "order"
+				? true
+				: sel.dontKnow || (sel.otherSelected && other.trim().length > 0) || sel.selected.size > 0;
 
 	const submit = () => {
 		if (!canSubmit || compactionRunning || attachments.uploading || !!attachments.pdf) return;
@@ -391,11 +431,12 @@ function QuestionDockForm({
 			dontKnow: sel.dontKnow,
 			values: [...sel.selected].map((i) => qd.options[i]!.value),
 			other: sel.otherSelected ? other : undefined,
-			text: qd.mode === "text" ? answerTextRef.current : undefined,
-			thinking: qd.mode !== "text" ? thinkingTextRef.current.trim() || undefined : undefined,
-			// Always sent on quiz answers (owner: 50 must mean 50, never
+			text: typedLine ? lineRef.current : qd.mode === "text" ? answerTextRef.current : undefined,
+			thinking: qd.mode !== "text" || typedLine ? thinkingTextRef.current.trim() || undefined : undefined,
+			order: format === "order" && !sel.dontKnow ? order : undefined,
+			// Always sent on graded answers (owner: 50 must mean 50, never
 			// "untouched"); buildAnswer drops it on "I don't know".
-			confidence: kind === "quiz" ? CONFIDENCE_STOPS[confIdx] : undefined,
+			confidence: kind === "quiz" || kind === "explain" ? CONFIDENCE_STOPS[confIdx] : undefined,
 		};
 		onSubmit({ ...buildAnswer(qd, req, toolName), ...(attachments.items.length ? { attachments: attachments.items } : {}) });
 		attachments.clear();
@@ -404,7 +445,7 @@ function QuestionDockForm({
 	/* ENTER SUBMITS FROM ANYWHERE (owner round 6, 2026-10-05): the same
 	 * law as the practice dock — dictated answers rarely focus the field.
 	 * Rides submit() so the dictation-flush law is shared, not forked. */
-	useEnterSubmits(submit);
+	useEnterSubmits(submit, active !== false);
 
 	// Selecting Other never clears the thinking field — two channels, the
 	// answer and the reasoning behind it, side by side.
@@ -432,8 +473,8 @@ function QuestionDockForm({
 	// One row past the options is the trailing row: quiz → don't-know,
 	// ask → Other (a question never has both). Text mode (ask/explain)
 	// has no rows — the composer IS the answer surface.
-	const optionCount = qd.mode === "text" ? 0 : qd.options.length;
-	const rowCount = qd.mode === "text" ? 0 : optionCount + 1;
+	const optionCount = qd.mode === "text" || format === "order" ? 0 : qd.options.length;
+	const rowCount = qd.mode === "text" || format === "order" ? 0 : optionCount + 1;
 
 	const kbdAct = (idx: number) => {
 		if (idx < optionCount) toggle(idx);
@@ -517,7 +558,7 @@ function QuestionDockForm({
 				// SAME pattern as ↑/↓ over the rows — works wherever focus
 				// sits, no click-in, no focus ring. Dead on "I don't know"
 				// (the slider grays out and nothing is sent).
-				if (kind !== "quiz" || sel.dontKnow) return;
+				if ((kind !== "quiz" && kind !== "explain") || sel.dontKnow) return;
 				e.preventDefault();
 				setConfIdx((i) =>
 					Math.min(
@@ -553,7 +594,8 @@ function QuestionDockForm({
 			    Capped by the measured column (--dock-max-h; the old fixed 55dvh cut
 			    long questions short — owner round, 2026-10-05). */}
 			<div data-dock-scroll="" data-session-find-root="" className="max-h-[var(--dock-max-h,55dvh)] overflow-y-auto px-4 pt-3">
-				<div className="mb-1 text-xs font-medium uppercase tracking-wide text-muted-foreground">
+				<div className="sticky top-0 z-10 -mx-4 -mt-3 mb-1 flex items-center justify-between gap-2 bg-card px-4 pb-1 pt-3 text-xs font-medium uppercase tracking-wide text-muted-foreground">
+					<span>
 					{toolName === "probe"
 						? "Probe"
 						: toolName === "recall"
@@ -565,7 +607,10 @@ function QuestionDockForm({
 									: kind === "explain"
 										? "Explain"
 											: "Question"}
+					{format && QUESTION_FORMAT_LABELS[format] && ` · ${QUESTION_FORMAT_LABELS[format]}`}
 					{qd.mode === "multi-select" && " · select all that apply"}
+					</span>
+					{headerAction}
 				</div>
 				<div className="mb-3 font-medium">
 					<MessageResponse>{qd.question}</MessageResponse>
@@ -576,8 +621,93 @@ function QuestionDockForm({
 					</div>
 				)}
 
-				{qd.mode !== "text" && (
-					<div className="flex flex-col gap-2 pb-2" role={qd.mode === "multi-select" ? "group" : "radiogroup"}>
+				{/* next_line: the derivation so far, then his line. */}
+				{format === "next_line" && (qd.lines?.length ?? 0) > 0 && (
+					<ol data-testid="derivation-lines" className="mb-2 overflow-hidden rounded-lg border border-border/70 text-sm">
+						{qd.lines!.map((l, i) => (
+							<li key={i} className="flex items-center gap-3 border-b border-border/60 px-3 py-1.5 last:border-b-0">
+								<span className="w-4 shrink-0 font-mono text-xs text-muted-foreground">{i + 1}</span>
+								<MessageResponse className="min-w-0 [&_p]:m-0">{asInlineMath(l)}</MessageResponse>
+							</li>
+						))}
+					</ol>
+				)}
+				{typedLine && (
+					<div className="pb-2">
+						<input
+							data-testid="formula-input"
+							value={line}
+							onChange={(e) => {
+								lineRef.current = e.target.value;
+								setLine(e.target.value);
+							}}
+							onKeyDown={(e) => {
+								if (e.key === "Escape" && onEscape) {
+									e.preventDefault();
+									e.stopPropagation();
+									onEscape();
+									return;
+								}
+								if (e.key === "Enter") {
+									e.preventDefault();
+									submit();
+								}
+							}}
+							placeholder={format === "next_line" ? "The next line, in LaTeX" : "Your answer, in LaTeX (like \\frac{c}{H(z)})"}
+							className="lh-input w-full rounded-lg border border-border/70 bg-background/60 px-3 py-2 font-mono text-sm outline-none focus:border-primary/50"
+						/>
+						{line.trim() && (
+							<div data-testid="formula-preview" className="mt-1.5 flex items-baseline gap-2 text-sm text-muted-foreground">
+								<span className="text-xs">Preview</span>
+								<MessageResponse className="min-w-0 text-foreground [&_p]:m-0">{asInlineMath(line)}</MessageResponse>
+							</div>
+						)}
+					</div>
+				)}
+
+				{format === "order" && (
+					<div data-testid="order-steps" className="pb-2">
+						<ol className="flex flex-col gap-1.5">
+							{order.map((value, i) => {
+								const opt = qd.options.find((o) => o.value === value);
+								return (
+									<li key={value} className={cn("flex items-center gap-3 rounded-lg border px-3 py-2 text-sm", sel.dontKnow && "opacity-50")}>
+										<span className="w-4 shrink-0 font-mono text-xs text-muted-foreground">{i + 1}</span>
+										<MessageResponse className="min-w-0 flex-1 [&_p]:m-0">{opt?.label ?? value}</MessageResponse>
+										<span className="flex shrink-0 gap-1">
+											<button type="button" aria-label="Move up" disabled={i === 0 || sel.dontKnow} onClick={() => moveStep(i, -1)} className="flex size-7 items-center justify-center rounded-md border border-border/60 text-muted-foreground hover:bg-accent disabled:opacity-30">
+												<ArrowUpIcon className="size-3.5" />
+											</button>
+											<button type="button" aria-label="Move down" disabled={i === order.length - 1 || sel.dontKnow} onClick={() => moveStep(i, 1)} className="flex size-7 items-center justify-center rounded-md border border-border/60 text-muted-foreground hover:bg-accent disabled:opacity-30">
+												<ArrowDownIcon className="size-3.5" />
+											</button>
+										</span>
+									</li>
+								);
+							})}
+						</ol>
+						<button
+							type="button"
+							onClick={() => setSel((prev) => ({ ...prev, selected: new Set(), otherSelected: false, dontKnow: !prev.dontKnow }))}
+							aria-pressed={sel.dontKnow}
+							className={cn(
+								"mt-2 flex w-full items-start gap-3 rounded-lg border border-dashed px-3 py-2 text-left text-sm outline-none transition-colors",
+								sel.dontKnow ? "border-primary text-foreground" : "text-muted-foreground",
+							)}
+						>
+							<span className={cn("mt-0.5 flex size-4 shrink-0 items-center justify-center rounded-full border", sel.dontKnow ? "border-primary bg-primary text-primary-foreground" : "border-muted-foreground/40")}>
+								{sel.dontKnow && <span className="size-1.5 rounded-full bg-current" />}
+							</span>
+							<span>I don't know</span>
+						</button>
+					</div>
+				)}
+
+				{qd.mode !== "text" && format !== "order" && (
+					<div
+						className={cn("flex gap-2 pb-2", format === "true_false" ? "flex-row flex-wrap" : "flex-col")}
+						role={qd.mode === "multi-select" ? "group" : "radiogroup"}
+					>
 						{qd.options.map((opt, i) => {
 							const isSel = sel.selected.has(i);
 							return (
@@ -590,10 +720,12 @@ function QuestionDockForm({
 									onClick={() => toggle(i)}
 									className={cn(
 										"flex items-start gap-3 rounded-lg border px-3 py-2 text-left text-sm outline-none transition-colors",
+										format === "true_false" && "min-w-[8rem] flex-1 justify-center",
 										isSel ? "border-primary bg-accent" : "hover:bg-accent/50",
 										i === kbdIdx && !isSel && "ring-1 ring-border bg-accent/40",
 									)}
 								>
+									{format === "spot_error" && <span className="mt-0.5 w-4 shrink-0 font-mono text-xs text-muted-foreground">{i + 1}</span>}
 									<span
 										className={cn(
 											"mt-0.5 flex size-4 shrink-0 items-center justify-center border",
@@ -638,6 +770,7 @@ function QuestionDockForm({
 									// Option-row layout + radio circle (owner); the dashed
 									// outline stays — this is the deliberate non-answer.
 									"flex items-start gap-3 rounded-lg border border-dashed px-3 py-2 text-left text-sm outline-none transition-colors",
+									format === "true_false" && "w-full",
 									sel.dontKnow ? "border-primary text-foreground" : "text-muted-foreground",
 									kbdIdx === optionCount && !sel.dontKnow && "ring-1 ring-border bg-accent/40",
 								)}
@@ -741,7 +874,7 @@ function QuestionDockForm({
 				app-wide). Clicking and dragging are native. "I don't know"
 				GRAYS it out — the layout holds, no value is sent, the IDK
 				signal stands alone. */}
-			{kind === "quiz" && (
+			{(kind === "quiz" || kind === "explain") && (
 				<div className="border-t border-border/60 px-4 py-2.5">
 					<div className="flex items-center gap-3">
 						<span
@@ -833,14 +966,14 @@ function QuestionDockForm({
 			>
 				<div
 					{...attachments.handlers}
-					data-testid={qd.mode === "text" ? "answer-field" : "thinking-field"}
+					data-testid={qd.mode === "text" && !typedLine ? "answer-field" : "thinking-field"}
 					className="rounded-[10px] border border-border/70 bg-background/60 transition-colors focus-within:border-primary/50"
 				>
 					<div className="px-2.5 pt-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">
-						{qd.mode === "text" ? "Your answer" : "YOUR THINKING"}
+						{thinkingLabel(format, qd.mode === "text" && !typedLine)}
 					</div>
 					<AttachmentDetails draft={attachments} disabled={compactionRunning} />
-					{qd.mode === "text" ? (
+					{qd.mode === "text" && !typedLine ? (
 						<textarea
 							value={text}
 							onChange={(e) => {
@@ -864,9 +997,12 @@ function QuestionDockForm({
 									submit();
 								}
 							}}
-							placeholder="Type your answer…"
+							placeholder={format === "explain_back" ? "Explain it in your own words…" : "Type your answer…"}
 							rows={1}
-							className="field-sizing-content lh-input max-h-48 min-h-10 w-full resize-none bg-transparent px-2.5 py-2 outline-none placeholder:text-muted-foreground"
+							className={cn(
+								"field-sizing-content lh-input max-h-72 w-full resize-none bg-transparent px-2.5 py-2 outline-none placeholder:text-muted-foreground",
+								format === "explain_back" ? "min-h-40" : format === "short" ? "min-h-20" : "min-h-10",
+							)}
 						/>
 					) : (
 						<textarea
@@ -894,7 +1030,7 @@ function QuestionDockForm({
 									submit();
 								}
 							}}
-							placeholder="Why this answer? Whatever comes to mind."
+							placeholder={format === "spot_error" ? "Which line is wrong, and why?" : format === "true_false" ? "Why is it true or false?" : "Why this answer? Whatever comes to mind."}
 							rows={1}
 							className={cn(
 								"field-sizing-content lh-input max-h-48 w-full resize-none bg-transparent px-2.5 py-2 outline-none placeholder:text-muted-foreground/70",
@@ -906,6 +1042,19 @@ function QuestionDockForm({
 					)}
 					<div className="flex items-center justify-between gap-2 p-1">
 						<AttachmentPicker draft={attachments} iconOnly disabled={compactionRunning} />
+						{/* Skip (owner, 2026-10-30): the teacher reads the skip and
+						    moves on or asks it another way. */}
+						{kind !== "ask" && (
+							<button
+								type="button"
+								data-testid="question-skip"
+								disabled={compactionRunning}
+								onClick={() => onSubmit(dismissedAnswer(kind, qd.question))}
+								className="rounded px-1.5 py-1 text-xs text-muted-foreground hover:bg-accent hover:text-foreground"
+							>
+								Skip this question
+							</button>
+						)}
 						<span aria-hidden className="pl-1.5 text-xs text-muted-foreground">
 								{compactionRunning ? "compacting session…" : "↵ submits · ⇧↵ newline"}
 						</span>
@@ -921,4 +1070,13 @@ function QuestionDockForm({
 			</form>
 		</div>
 	);
+}
+
+/** The bottom field's label per format: one box for prose answers, the
+ *  thinking box everywhere else. */
+function thinkingLabel(format: string | undefined, answerBox: boolean): string {
+	if (answerBox) return format === "explain_back" ? "Your explanation" : format === "short" ? "Your answer and thinking" : "Your answer";
+	if (format === "spot_error") return "Why is it wrong?";
+	if (format === "true_false") return "Your reason";
+	return "YOUR THINKING";
 }

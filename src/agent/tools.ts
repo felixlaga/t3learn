@@ -2,6 +2,7 @@ import { Type } from "typebox";
 import type { AgentTool } from "@earendil-works/pi-agent-core";
 import { invalidInputResult, questionResult, serverExecute } from "./tool-execute.ts";
 import {
+	TRUE_FALSE_OPTIONS,
 	askInputSchema,
 	askOptionProblems,
 	explainInputBase,
@@ -13,6 +14,8 @@ import {
 	quizInputProblems,
 } from "../core/question-core.ts";
 import { filterEnabledTools, type EnabledTools } from "../core/pending.ts";
+import { openQuestionOf } from "../core/native-messages.ts";
+import type { ChatStore } from "../core/ports.ts";
 import type { JobRecord } from "../core/contracts.ts";
 import type { JobStore } from "../core/ports.ts";
 import { jobTools, type DemoInput, type PdfInput, type ResearchInput, type VisualInput } from "./tools/jobs.ts";
@@ -66,14 +69,42 @@ export type { ProbeDoneContext } from "./tools/probe.ts";
  *  honestly and the agent retries with a real error to learn from. */
 function prepareQuestionArguments<T extends object>(args: unknown): T {
 	if (args && typeof args === "object" && !Array.isArray(args)) {
-		const o = args as { options?: unknown };
+		let o = args as { options?: unknown; format?: unknown; correctAnswer?: unknown };
 		if (typeof o.options === "string") {
 			const parsed = parseOptionsIfString(o.options);
-			if (parsed !== o.options) return { ...o, options: parsed } as T;
+			if (parsed !== o.options) o = { ...o, options: parsed };
+		}
+		// True or false (owner, 2026-10-30): the two options are fixed, so
+		// the tool fills them in, and a boolean answer becomes its value.
+		if (o.format === "true_false") {
+			const empty = o.options === undefined || (Array.isArray(o.options) && o.options.length === 0);
+			o = {
+				...o,
+				...(empty ? { options: TRUE_FALSE_OPTIONS.map((x) => ({ ...x })) } : {}),
+				...(typeof o.correctAnswer === "boolean" ? { correctAnswer: String(o.correctAnswer) } : {}),
+			};
 		}
 		return o as T;
 	}
 	return args as T;
+}
+
+/** ONE QUESTION AT A TIME, WHILE HE CHATS TOO (owner, 2026-10-30): a
+ *  question that waits on his screen blocks every new one, until he
+ *  answers or skips it. Wraps any question tool; the check runs before
+ *  the tool's own validation. */
+const OPEN_QUESTION_PROBLEM =
+	"A question is still open on his screen. Reply to his message without a new question. He will answer or skip the open one first.";
+
+export function guardOpenQuestion<T extends AgentTool<any>>(tool: T, ctx: { chatId: string; chatStore: Pick<ChatStore, "getChat"> }): T {
+	return {
+		...tool,
+		execute: async (toolCallId, input, ...rest) => {
+			const record = ctx.chatStore.getChat(ctx.chatId);
+			if (record && openQuestionOf(record.messages)) return invalidInputResult(tool.name, [OPEN_QUESTION_PROBLEM]);
+			return tool.execute(toolCallId, input, ...rest);
+		},
+	};
 }
 
 export const askUserQuestionTool: AgentTool<typeof askInputSchema> = {
@@ -147,7 +178,11 @@ function quizDescription(delta: { name: "quiz" | "probe"; nodeId: boolean; types
 		delta.name +
 		" always has a " +
 		"correct answer supplied by you, marks the learner's selection right/wrong, reveals the correct answer, and " +
-		"can show an explanation. Options-only: single-select or multi-select, plus an automatic 'I don't know' " +
+		"can show an explanation. Options-only: single-select or multi-select. " +
+		"`format` sets how he answers: choice (the default), true_false, spot_error or order — the field's own " +
+		"description gives each format's options and correctAnswer. For typed answers use " +
+		(delta.name === "quiz" ? "explain" : "recall") +
+		". Every format also gets an automatic 'I don't know' " +
 		"choice so the learner can signal a genuine gap instead of guessing. An always-present optional thinking " +
 		"field lets the learner attach his reasoning to ANY answer; it reaches you only when non-empty. " +
 		"No free-text answers — for non-graded questions use ask_user_question instead. " +
@@ -180,8 +215,11 @@ function quizDescription(delta: { name: "quiz" | "probe"; nodeId: boolean; types
  *  as recall (owner 2026-10-09). */
 function explainDescription(name: "explain" | "recall", nodeId: boolean): string {
 	return (
-		"Ask the learner to EXPLAIN something in his own words — a graded check with NO options: he types a free-text " +
-		"answer. Unlike ask_user_question (no right answer), " +
+		"Ask the learner a graded question he answers by TYPING — NO options. `format` sets the shape: short (the " +
+		"default, a sentence or two), formula (a number or formula in LaTeX), next_line (`lines` shows a derivation so " +
+		"far; he writes the next line) or explain_back (he explains a whole idea in his own words). " +
+		"For answers he picks, use " + (name === "explain" ? "quiz" : "probe") + ". " +
+		"Unlike ask_user_question (no right answer), " +
 		name +
 		" always has one. THE COMMITMENT RULE: " +
 		"correctAnswer is the FULL correct answer in your own words, reasoning included, COMMITTED before he ever " +
@@ -304,13 +342,13 @@ export function createProberTools(
 	// the settings arm. ask stays always-on. The registry keys are the
 	// PHASE names (probe/recall, owner 2026-10-09) — distinct from the
 	// teach tools so the schema boundary is visible to the model.
-	const mechanics = quizMechanics(enabled);
-	// The armed quizzing tool, widened to the registry's heterogeneous
-	// AgentTool record BEFORE the filter (a conditional spread of two
-	// differently-typed literals makes the whole object's type a union —
-	// unusable as Record<string, AgentTool<any>> downstream).
-	const quizzing: Record<string, AgentTool<any>> =
-		mechanics === "free" ? { recall: probeExplainTool } : { probe: probeQuizTool };
+	// Both quizzing tools, always (owner, 2026-10-30): the prober picks the
+	// format per question. Each question tool waits while one is open.
+	const quizzing: Record<string, AgentTool<any>> = {
+		probe: guardOpenQuestion(probeQuizTool, ctx),
+		recall: guardOpenQuestion(probeExplainTool, ctx),
+		ask_user_question: guardOpenQuestion(askUserQuestionTool, ctx),
+	};
 	// healToolRecord (owner, 2026-10-09 — the whitehead generalization):
 	// the standard argument heal over the WHOLE registry — every tool,
 	// not just the one the latest wobble incident landed on.
@@ -318,7 +356,6 @@ export function createProberTools(
 		...filterEnabledTools(
 			{
 				...quizzing,
-				ask_user_question: askUserQuestionTool,
 				// The learner-filesystem set is always-on (user-decided 2026-09,
 				// sources v1): the prober inspects and LOCATES learner-referenced
 				// files while assessing the edge. Read-only by construction.
@@ -413,18 +450,9 @@ export interface TeacherToolContext extends PlanToolContext {
  * future toggleables (question-tool variants, …) need no change here.
  * Absent/undefined = enabled — tests and old records see today's set.
  */
-/** The quizzing mechanics (owner 2026-09-27): `tools.explain === true` in
- *  the resolved settings ⇒ free-recall checks (explain armed, quiz dropped)
- *  — anything else ⇒ multiple choice, exactly today's set. Mechanics-
- *  managed, NOT individually toggleable: quiz/explain never pass through
- *  filterEnabledTools (the 2026-09-19 wedge ruling stands — a quiz-less
- *  prober collapses its assessment flow). */
-export function quizMechanics(enabled?: EnabledTools): "choice" | "free" {
-	return enabled?.explain === true ? "free" : "choice";
-}
-
-/** Strip the mechanics keys so filterEnabledTools can never drop the
- *  quizzing tools (the derivation above is their only switch). */
+/** Strip the old mechanics keys (owner 2026-09-27 switch, retired
+ *  2026-10-30: both quizzing tools are always on) so filterEnabledTools
+ *  can never drop a quizzing tool. Old settings may still carry them. */
 function withoutMechanics(enabled?: EnabledTools): EnabledTools | undefined {
 	if (!enabled) return undefined;
 	const { explain: _e, quiz: _q, ...rest } = enabled;
@@ -435,20 +463,18 @@ export function createTeacherTools(
 	ctx: TeacherToolContext,
 	enabled?: EnabledTools,
 ): Record<string, AgentTool<any>> {
-	// Quizzing mechanics (owner 2026-09-27): free-recall swaps the teach
-	// quiz for the teach explain — one quizzing tool at a time, whichever
-	// the settings arm. ask stays always-on.
-	const mechanics = quizMechanics(enabled);
-	// Same widening as the prober's (see above) — the conditional spread of
-	// two differently-typed literals collapses into an unusable union type.
-	const quizzing: Record<string, AgentTool<any>> =
-		mechanics === "free" ? { explain: teachExplainToolFor(ctx) } : { quiz: teachQuizToolFor(ctx) };
+	// Both quizzing tools, always (owner, 2026-10-30): the teacher picks the
+	// format per question. Each question tool waits while one is open.
+	const quizzing: Record<string, AgentTool<any>> = {
+		quiz: guardOpenQuestion(teachQuizToolFor(ctx), ctx),
+		explain: guardOpenQuestion(teachExplainToolFor(ctx), ctx),
+		ask_user_question: guardOpenQuestion(askUserQuestionTool, ctx),
+	};
 	// healToolRecord — same standard as the prober's registry (above).
 	return healToolRecord(
 		filterEnabledTools(
 			{
 			...quizzing,
-			ask_user_question: askUserQuestionTool,
 			// The learner-filesystem set is always-on (user-decided 2026-09,
 			// sources v1): the teacher locates and reads learner-referenced
 			// files on its own terms — nothing auto-injects. Read-only by

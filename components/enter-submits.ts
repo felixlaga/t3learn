@@ -59,10 +59,13 @@ export function buttonKeepsNativeEnter(el: HTMLElement): boolean {
 
 /** Mount-scoped: while the dock is mounted (a problem/question is active),
  *  plain Enter anywhere outside a typing surface or button submits it. */
-export function useEnterSubmits(submit: () => void): void {
+export function useEnterSubmits(submit: () => void, enabled = true): void {
 	const submitRef = useRef(submit);
 	submitRef.current = submit;
 	useEffect(() => {
+		// A tucked question (owner, 2026-10-30) never takes Enter: the chat
+		// box sits right below it.
+		if (!enabled) return;
 		const onKey = (e: KeyboardEvent) => {
 			if (e.key !== "Enter") return;
 			if (e.metaKey || e.ctrlKey || e.altKey || e.shiftKey) return;
@@ -74,5 +77,5 @@ export function useEnterSubmits(submit: () => void): void {
 		};
 		window.addEventListener("keydown", onKey);
 		return () => window.removeEventListener("keydown", onKey);
-	}, []);
+	}, [enabled]);
 }

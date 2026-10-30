@@ -7,7 +7,7 @@ import { ThinkingBlock } from "@/components/thinking-block";
 import { cn } from "@/lib/utils";
 import { MessageResponse } from "@/components/ai-elements/message";
 import type { QuestionAnswerData } from "@/src/core";
-import { parseAskInput, parseQuizInput } from "@/src/core";
+import { QUESTION_FORMAT_LABELS, asInlineMath, parseAskInput, parseQuizInput } from "@/src/core";
 
 /**
  * Static rendering of an answered question (tool part in `output-available`).
@@ -76,6 +76,7 @@ export function AnsweredCard({ answer, input }: { answer: QuestionAnswerData; in
 									: isExplain
 										? "Explain"
 											: "Question"}
+				{answer.format && QUESTION_FORMAT_LABELS[answer.format] && <span>· {QUESTION_FORMAT_LABELS[answer.format]}</span>}
 				{isQuiz &&
 					(answer.dontKnow ? (
 						<span className="rounded bg-muted px-1.5 py-0.5">didn't know</span>
@@ -96,7 +97,26 @@ export function AnsweredCard({ answer, input }: { answer: QuestionAnswerData; in
 				</div>
 			)}
 
-			{((answer.options?.length ?? 0) > 0 || answer.other) && (
+			{/* Put in order (owner, 2026-10-30): his order, and the right one
+			    when they differ. */}
+			{answer.format === "order" && (answer.order?.length ?? 0) > 0 && (
+				<div data-testid="answered-order" className={cn("grid gap-3 text-sm", !answer.correct && (answer.correctOrder?.length ?? 0) > 0 && "sm:grid-cols-2")}>
+					<OrderList title="Your order" steps={answer.order!} tone={answer.correct ? "right" : "wrong"} />
+					{!answer.correct && (answer.correctOrder?.length ?? 0) > 0 && <OrderList title="The right order" steps={answer.correctOrder!} tone="right" />}
+				</div>
+			)}
+			{/* next_line: the derivation he continued. */}
+			{(answer.lines?.length ?? 0) > 0 && (
+				<ol className="mb-2 overflow-hidden rounded-lg border border-border/70 text-sm">
+					{answer.lines!.map((l, i) => (
+						<li key={i} className="flex items-center gap-3 border-b border-border/60 px-3 py-1.5 last:border-b-0">
+							<span className="w-4 shrink-0 font-mono text-xs text-muted-foreground">{i + 1}</span>
+							<MessageResponse className="min-w-0 [&_p]:m-0">{asInlineMath(l)}</MessageResponse>
+						</li>
+					))}
+				</ol>
+			)}
+			{((answer.options?.length ?? 0) > 0 || answer.other) && answer.format !== "order" && (
 				<div className="flex flex-col gap-1.5 text-sm">
 					{answer.options?.map((opt) => {
 						const sel = selectedIdx.has(opt.index);
@@ -158,7 +178,13 @@ export function AnsweredCard({ answer, input }: { answer: QuestionAnswerData; in
 				</div>
 			)}
 
-			{answer.text && <div className="lh-prose mt-2 whitespace-pre-wrap">“{answer.text}”</div>}
+			{answer.text && (answer.format === "formula" || answer.format === "next_line" ? (
+				<div data-testid="answered-formula" className="mt-2 rounded-lg border border-primary/60 bg-accent px-3 py-1.5 text-sm">
+					<MessageResponse className="[&_p]:m-0">{asInlineMath(answer.text)}</MessageResponse>
+				</div>
+			) : (
+				<div className="lh-prose mt-2 whitespace-pre-wrap">“{answer.text}”</div>
+			))}
 
 			{/* The confidence record (owner round 6): the slider's rail, disc
 			    removed — the missing handle itself says "this is a record, not a
@@ -167,7 +193,7 @@ export function AnsweredCard({ answer, input }: { answer: QuestionAnswerData; in
 			    "I don't know" sent none (its slider was grayed out), explain and
 			    ask never had one, and records from before the feature carry no
 			    field — nothing to show, nothing rendered. */}
-			{isQuiz && answer.confidence != null && (
+			{(isQuiz || isExplain) && answer.confidence != null && (
 				<div className="mt-3 flex items-center gap-3" data-testid="answered-confidence">
 					<ConfidenceRail value={answer.confidence} className="min-w-0 flex-1" />
 					<span className="w-9 shrink-0 text-right font-mono text-sm tabular-nums text-muted-foreground">
@@ -230,5 +256,22 @@ export function AnsweredCard({ answer, input }: { answer: QuestionAnswerData; in
 			)}
 		</div>
 		</>
+	);
+}
+
+/** One column of the order card: numbered steps, marked right or wrong. */
+function OrderList({ title, steps, tone }: { title: string; steps: string[]; tone: "right" | "wrong" }) {
+	return (
+		<div>
+			<div className="mb-1 text-xs font-medium text-muted-foreground">{title}</div>
+			<ol className={cn("overflow-hidden rounded-lg border", tone === "right" ? "border-green-500/50" : "border-red-500/50")}>
+				{steps.map((step, i) => (
+					<li key={i} className="flex items-start gap-3 border-b border-border/60 px-3 py-1.5 last:border-b-0">
+						<span className="mt-0.5 w-4 shrink-0 font-mono text-xs text-muted-foreground">{i + 1}</span>
+						<MessageResponse className="min-w-0 [&_p]:m-0">{step}</MessageResponse>
+					</li>
+				))}
+			</ol>
+		</div>
 	);
 }
