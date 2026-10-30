@@ -36,7 +36,7 @@ export function collectSnapshot(dataDir: string = PATHS.data): CollectedSnapshot
 	const root = path.resolve(dataDir);
 	if (!fs.existsSync(root)) return { files: [], skipped: [] };
 	if (!fs.statSync(root).isDirectory()) throw new Error("Learning data directory is not a directory.");
-	const candidates = ["settings.json", "learning.json"];
+	const candidates = ["settings.json", "learning.json", "learner.json"];
 	for (const directory of ["chats", "graph"]) {
 		const full = path.join(root, directory);
 		if (!fs.existsSync(full)) continue;

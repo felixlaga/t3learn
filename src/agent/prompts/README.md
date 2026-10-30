@@ -15,7 +15,9 @@ Rules for adding a fragment:
   moves of great explainers, the sentence rules, the words he never sees; composes
   into all three agents, practice included), `20-question-tools.md` (tool
   MECHANICS only; what to ask is each phase's own doctrine), `30-learner-files.md`,
-  `40-formatting.md`. The voice lives in `10-voice.md`. The "never reference the other
+  `18-how-he-learns.md` (the learner tree: follow its notes, save what he
+  says with `remember_how_i_learn`; composes into all three agents, practice
+  included), `40-formatting.md`. The voice lives in `10-voice.md`. The "never reference the other
   agent's tools" rule below still applies, so shared fragments may only cover tools
   both agents actually hold.
 - One fragment per workstream — your brief tells you which filename you own.

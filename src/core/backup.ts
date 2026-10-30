@@ -32,13 +32,14 @@ const GRAPH_FILES: ReadonlySet<string> = new Set([
 ]);
 
 /** The explicit allowlist (mirrors scripts/learning-backup.mjs): the
- *  settings and learning records, every chat record, the known graph
+ *  settings, learning and learner-tree records, every chat record, the known graph
  *  files. Never credentials, CLI state, jobs, logs, debug, caches,
  *  attachments or the backup's own bookkeeping. */
 export function allowedLearningFile(relative: string): boolean {
 	return (
 		relative === "settings.json" ||
 		relative === "learning.json" ||
+		relative === "learner.json" ||
 		/^chats\/[A-Za-z0-9_-]+\.json$/.test(relative) ||
 		(relative.startsWith("graph/") && GRAPH_FILES.has(relative.slice(6)))
 	);

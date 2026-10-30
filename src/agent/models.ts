@@ -20,6 +20,7 @@ import { chatGPTStream } from "./chatgpt-stream.ts";
 import type { ChatGPTDispatchLifecycle } from "./chatgpt-request-cycle.ts";
 import { nativeSubscriptionId, nativeSubscriptionModel } from "./subscription-bridge.ts";
 import { nativeSubscriptionStream } from "./subscription-stream.ts";
+import { claudeWithFallback, codexFallbackModel, fallsBack } from "./claude-fallback.ts";
 
 /** App identity is immutable and shared by Models and every native Agent.
  * Agent's default Pi attribution otherwise overrides the Models identity. */
@@ -122,8 +123,21 @@ export function piEngineForSpec(spec: ResolvedModelSpec, background: boolean | (
 		// the pin honest even when config or settings drift off the map.
 		streamFn: (requestModel, context, options) => {
 			const purpose = typeof background === "function" ? background : () => background;
-			const stream = isCliProvider(spec.provider) ? cliStream(spec.provider, purpose, lifecycle) : spec.provider === "chatgpt" ? chatGPTStream(purpose, lifecycle) : nativeId ? nativeSubscriptionStream(models.getProvider(nativeId)!, purpose, lifecycle) : models.streamSimple.bind(models);
-			return stream(requestModel, context, { ...options, reasoning: level === "off" ? undefined : level });
+			const run = (cycle: ChatGPTDispatchLifecycle | undefined) => {
+				const stream = isCliProvider(spec.provider) ? cliStream(spec.provider, purpose, cycle) : spec.provider === "chatgpt" ? chatGPTStream(purpose, cycle) : nativeId ? nativeSubscriptionStream(models.getProvider(nativeId)!, purpose, cycle) : models.streamSimple.bind(models);
+				return stream(requestModel, context, { ...options, reasoning: level === "off" ? undefined : level });
+			};
+			if (!fallsBack(spec.provider)) return run(lifecycle);
+			// CLAUDE → CODEX (owner, 2026-10-30): a Claude call that hits the
+			// usage limit reruns on Codex, at the same thinking level
+			// (claude-fallback.ts). The Codex engine is built per call so a
+			// reconnect or a new Codex model list lands at once.
+			return claudeWithFallback(run, () => {
+				const stand = codexFallbackModel(purpose());
+				if (!stand) return undefined;
+				const swap = { provider: stand.provider, id: stand.id, ...(spec.thinkingLevel ? { thinkingLevel: spec.thinkingLevel } : { thinkingLevel: level }) };
+				return { run: (cycle) => { const engine = piEngineForSpec(swap, background, cycle); return engine.streamFn(engine.model, context, options); } };
+			}, lifecycle);
 		},
 	};
 }

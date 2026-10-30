@@ -7,6 +7,7 @@ import type { CliProviderId } from "../core/contracts/cli-providers.ts";
 import { CodexRpc } from "./cli-process.ts";
 import { assertClaudeSubscription, assertCliIdentity, claudeOptions, cliBackgroundAllowed, cliBinary, cliScope, cliScopeCurrent, cliWorkController, cliWorkingDirectory } from "./cli-providers.ts";
 import type { SubscriptionDispatchLifecycle } from "./subscription-request-cycle.ts";
+import { isUsageLimitError, noteClaudeLimited } from "./claude-fallback.ts";
 
 /** Each Pi request is a bounded native runtime turn. LearnHarness executes tool
  * calls itself, including browser-owned quizzes. The following request replays
@@ -152,6 +153,9 @@ export function cliStream(id: CliProviderId, background: () => boolean, lifecycl
 						releasePrompt();
 						for await (const event of q) {
 							signal.throwIfAborted();
+							// The subscription's own limit signal (owner, 2026-10-30): the
+							// fallback to Codex keys on it (claude-fallback.ts).
+							if (event.type === "rate_limit_event" && event.rate_limit_info.status === "rejected") noteClaudeLimited(event.rate_limit_info.resetsAt);
 							if (event.type === "stream_event" && event.event.type === "content_block_delta") {
 								const delta = event.event.delta;
 								if (delta.type === "text_delta") { append("text", delta.text); streamed = true; }
@@ -182,6 +186,7 @@ export function cliStream(id: CliProviderId, background: () => boolean, lifecycl
 				}
 				output.push({ type: "done", reason: message.stopReason === "toolUse" ? "toolUse" : "stop", message });
 			} catch (error) {
+				if (id === "claude-code" && !signal.aborted && isUsageLimitError(error instanceof Error ? error.message : String(error))) noteClaudeLimited();
 				if (!committed) lifecycle?.noDispatch(signal.aborted ? (controller.signal.reason === "background" ? "background" : "all") : purpose && !cliBackgroundAllowed(id) ? "background" : "other");
 				message.stopReason = signal.aborted ? "aborted" : "error"; message.errorMessage = signal.aborted ? "CLI request cancelled." : cliStreamError(error);
 				output.push({ type: "error", reason: message.stopReason, error: message });

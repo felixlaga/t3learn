@@ -51,6 +51,8 @@ export * from "./cli-providers.ts";
 export { uploadAttachment, downloadAttachment, getAttachmentRef } from "./attachments.ts";
 export { transcribeAttachment } from "./transcription.ts";
 export { learningRoute, startLearningRoute, proposeLearningRoute, learningSessionDetail } from "./learning.ts";
+// The learner tree and the Claude → Codex notice (owner, 2026-10-30).
+export { learnerRoute, fallbackRoute, learnerView, changeLearner, type LearnerView, type LearnerViewNote } from "./learner.ts";
 export { cliRequestAllowed } from "./cli-providers.ts";
 // The automatic GitHub backup (backup wave, 2026-10-28): the routes under
 // /api/backup drive the process singleton; instrumentation.ts starts it.

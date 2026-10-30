@@ -49,6 +49,11 @@ import { persistTurn, triggerExtraction } from "./turn-service.ts";
 import { hasProbeDone, danglingQuestionOf } from "../core/native-messages.ts";
 import { composeInstructions } from "../agent/teacher-agent.ts";
 import { learningSessionInstructions } from "../core/learning.ts";
+import { learnerBrief, learnerTextOf } from "../core/learner.ts";
+import { learnerTools } from "../agent/tools/learner.ts";
+import { healToolRecord } from "../agent/tools/heal.ts";
+import { createLearnerReader } from "../agent/subagents/learner-reader.ts";
+import { isCliProvider } from "../core/contracts/cli-providers.ts";
 import { ensureCompacted, kickCompaction, effectiveThresholdTokens } from "./compaction.ts";
 import { catalogContextLimits, refreshConnectionCatalog } from "./model-catalog.ts";
 import { emit } from "../core/events.ts";
@@ -122,6 +127,27 @@ export const extraction = createExtractionPipeline({
 		providerKeyPresent(provider) ? null : providerKeyMissingEnvelope(provider, [tier]),
 });
 
+/** The learner-tree reader (owner, 2026-10-30): reads new stretches of a
+ *  lesson in the background and notices how he learns. Cheap tier. */
+export const learnerReader = createLearnerReader({
+	chatStore: stores.chatStore,
+	learnerStore: stores.learnerStore,
+	engineFor: () => resolveEngine("learnerReader"),
+});
+
+/** Fire-and-forget: run the reader once enough of his input waits
+ *  unread. Skipped under tests (the extraction precedent). */
+function triggerLearnerReader(chatId: string): void {
+	if (process.env.NODE_ENV === "test") return;
+	try {
+		if (!learnerReader.due(chatId)) return;
+		void learnerReader.read(chatId).then((outcome) => {
+			if (outcome.applied.length) console.info(`[chat ${chatId}] learner tree: ${outcome.applied.map((a) => a.status).join(", ")}`);
+		}).catch((err) => console.error(`[chat ${chatId}] learner-tree reader failed:`, err));
+	} catch (err) {
+		console.error(`[chat ${chatId}] learner-tree trigger failed:`, err);
+	}
+}
 
 // Wake-pipeline wiring (contracts.ts "THE ASYNC PROTOCOL" §4): the pipeline
 // delivers its steers through THIS composition root (one event: the steer
@@ -385,14 +411,29 @@ export async function handleChatInput(
 		staged: stagedAutomatic ? asAgentMessages(appends) : undefined,
 		foregroundOwed: !callPurpose.background,
 		purpose: callPurpose,
-		scopeCurrent: (scope) => connectionScopeCurrent(conversation.provider, scope),
+		// A CLI scope names its own connection (cliScope's accountId): the
+		// Claude → Codex fallback dispatches a Claude turn on Codex's scope
+		// (owner, 2026-10-30, agent/claude-fallback.ts).
+		scopeCurrent: (scope) => connectionScopeCurrent(isCliProvider(scope.accountId) ? scope.accountId : conversation.provider, scope),
 		commitStaged: () => { stores.chatStore.saveMessages(chatId, merged); persistBaseCount = merged.length; },
 		restoreAutomatic: (automaticIds, retainedIds) => restoreUncommittedAutomatic(chatId, constructed, automaticIds, retainedIds),
 	});
 	const learningSession = stores.learningStore.read().sessions[chatId];
 	const pdfRefs = sessionPdfRefs(asAgentMessages(merged));
+	// THE LEARNER TREE (owner, 2026-10-30): the notes in use ride the
+	// prompt; the tool saves what he says in this input. An unreadable
+	// tree never blocks a lesson: the turn runs without it.
+	let brief: string | undefined;
+	try { brief = learnerBrief(stores.learnerStore.read(), chatId); }
+	catch (err) { console.error(`[chat ${chatId}] learner tree unreadable:`, err); }
 	const agentOpts: AgentBuildOptions = {
 		...(learningSession ? { learningInstructions: learningSessionInstructions(learningSession) } : {}),
+		...(brief ? { learnerBrief: brief } : {}),
+		learnerTools: healToolRecord(learnerTools({
+			chatId,
+			learnerInput: input.type === "steers" ? { texts: [], messageIds: [] } : learnerTextOf(appends),
+			learnerStore: stores.learnerStore,
+		})),
 		attachmentContent,
 		...(pdfRefs.length ? { lessonPdfTools: lessonPdfTools(pdfRefs) } : {}),
 		engine,
@@ -546,6 +587,9 @@ export async function handleChatInput(
 					// against it and the pipeline's batches share it.
 					triggerExtraction(stores, extraction, chatId, effective.graph.extractionChunkTokens);
 				}
+				// THE LEARNER TREE (owner, 2026-10-30): every kind of session,
+				// practice included — his answers are the evidence.
+				if (!requestCycle || requestCycle.dispatched) triggerLearnerReader(chatId);
 				// PARKED DISMISSAL (owner, 2026-10-04): a dismissal that arrived
 				// mid-turn was parked by the dismiss route (202); now that
 				// persistTurn has landed the turn's messages, apply it against

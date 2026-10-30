@@ -89,3 +89,7 @@ export * from "./contracts/cli-providers.ts";
 
 export * from "./attachments.ts";
 export * from "./learning.ts";
+// learner.ts (owner, 2026-10-30): the learner tree — how he learns, kept
+// apart from the knowledge graph. Pure, browser-safe; the tree view
+// renders its labels and aspects.
+export * from "./learner.ts";

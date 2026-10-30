@@ -52,6 +52,12 @@ export interface ServerEvents {
 	 *  sign-in landed, a push started or settled, an error cleared. The
 	 *  Backup section refetches GET /api/backup. */
 	"backup-changed": Record<string, never>;
+	/** The learner tree changed (owner, 2026-10-30): a note was saved,
+	 *  noticed, edited or forgotten. The tree view refetches. */
+	"learner-changed": Record<string, never>;
+	/** Claude's usage limit started or ended (owner, 2026-10-30): lessons
+	 *  move to Codex and back. The sidebar notice refetches. */
+	"fallback-changed": Record<string, never>;
 }
 
 export type ServerEventType = keyof ServerEvents;
@@ -68,6 +74,8 @@ export const SERVER_EVENT_TYPES = [
 	"record-changed",
 	"compaction-changed",
 	"backup-changed",
+	"learner-changed",
+	"fallback-changed",
 ] as const satisfies readonly ServerEventType[];
 
 /** One notification: the type discriminates the payload. */

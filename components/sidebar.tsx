@@ -25,6 +25,8 @@ import { kbdEventForAction } from "@/src/core";
 import { notifySettingsSaved } from "@/components/settings-signal";
 import { UpdatePill, type UpdateStatus } from "@/components/update-pill";
 import { FOOTER_ICON_CLASS } from "@/components/footer-icon";
+import { LearnerButton } from "@/components/learner-dialog";
+import { FallbackNotice } from "@/components/fallback-notice";
 import { timeAgo } from "@/components/time-ago";
 
 /**
@@ -932,11 +934,16 @@ function SessionsSidebar() {
 					    learner opted out (no ambient signal, user decision). */}
 					<ActivitySection />
 
+					{/* Claude → Codex (owner, 2026-10-30): shown only while
+					    Claude is at its usage limit. */}
+					<FallbackNotice />
+
 					{/* THE ICON ROW (owner, 2026-10-28): T3 Code's bottom row —
 					    icon-only controls, labels in the tooltips. Settings (also
 					    mod+, in the keyboard registry), the graph view (⌘G, the
-					    logo's destination), Progress, and at the right end the
-					    update button (desktop only). */}
+					    logo's destination), Progress, How I learn (the learner
+					    tree, 2026-10-30), and at the right end the update button
+					    (desktop only). */}
 					<div className="flex items-center gap-1 px-3 pb-3 pt-2" data-testid="sidebar-footer">
 						<Hint label="Settings" action="open-settings" side="top">
 							<button
@@ -962,6 +969,7 @@ function SessionsSidebar() {
 							</button>
 						</Hint>
 						<ProgressButton />
+						<LearnerButton />
 						<UpdatePill />
 					</div>
 				</div>

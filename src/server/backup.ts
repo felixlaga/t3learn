@@ -40,7 +40,7 @@ import { deleteKey, keyValue, saveKey } from "./keys.ts";
 export const BACKUP_TOKEN_KEY = "GITHUB_BACKUP_TOKEN";
 
 /** The bus events after which records may have changed. */
-const PUSH_TRIGGERS: ReadonlySet<ServerEvent["type"]> = new Set(["turn-settled", "chats-changed", "record-changed", "activity-changed", "compaction-changed"]);
+const PUSH_TRIGGERS: ReadonlySet<ServerEvent["type"]> = new Set(["turn-settled", "chats-changed", "record-changed", "activity-changed", "compaction-changed", "learner-changed"]);
 
 export interface BackupSyncDeps {
 	clientId: string;

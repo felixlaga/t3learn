@@ -99,6 +99,13 @@ export type StepUsageCollector = (usage: Usage) => void;
 export interface AgentBuildOptions {
 	/** Trusted, server-built context from explicit goals/review selections. */
 	learningInstructions?: string;
+	/** The "How he learns" section (owner, 2026-10-30): the learner
+	 *  tree's notes in use, built by core/learner.ts learnerBrief and
+	 *  appended after every other part of the prompt. */
+	learnerBrief?: string;
+	/** The learner-tree tool (tools/learner.ts) — every agent kind holds
+	 *  it, like the lesson PDF tools. */
+	learnerTools?: Record<string, AgentTool<any>>;
 	attachmentContent?: (ids: string[], refs?: import("../core/attachments.ts").AttachmentRef[]) => import("../core/attachments.ts").AttachmentContent;
 	lessonPdfTools?: Record<string, AgentTool<any>>;
 	/** Model + stream function — tests inject a scripted faux engine. */
@@ -182,7 +189,7 @@ function baseAgentOptions(kind: AgentKind, opts: AgentBuildOptions, tools: Agent
 	const basePrompt = opts.promptSwitches
 		? composeInstructions(kind, opts.promptSwitches)
 		: composedInstructions[kind]!;
-	const systemPrompt = opts.learningInstructions ? `${basePrompt}\n\n---\n\n${opts.learningInstructions}` : basePrompt;
+	const systemPrompt = [basePrompt, opts.learningInstructions, opts.learnerBrief].filter(Boolean).join("\n\n---\n\n");
 	// Debug recorder (owner, 2026-10-04): raw provider events when
 	// LH_PROVIDER_EVENTS=1 and the caller handed a chatId; undefined is
 	// the normal no-observer path (tests, env-off).
@@ -195,7 +202,7 @@ function baseAgentOptions(kind: AgentKind, opts: AgentBuildOptions, tools: Agent
 			systemPrompt,
 			model: engine.model,
 			thinkingLevel: engine.level,
-			tools: [...tools, ...Object.values(opts.lessonPdfTools ?? {})],
+			tools: [...tools, ...Object.values(opts.lessonPdfTools ?? {}), ...Object.values(opts.learnerTools ?? {})],
 			messages: opts.messages ?? [],
 		},
 		streamFn: engine.streamFn,

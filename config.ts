@@ -52,7 +52,10 @@ export type ModelRole =
 	| "visualMaker"
 	| "pdfReader"
 	| "extractor"
-	| "auditor";
+	| "auditor"
+	/** The learner-tree reader (owner, 2026-10-30): cheap tier, no
+	 *  per-role override (not a BackgroundModelRole). */
+	| "learnerReader";
 
 /**
  * The LIVE graph store (src/store/graph.ts) — owned by the app's extraction
