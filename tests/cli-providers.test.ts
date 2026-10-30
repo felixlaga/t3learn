@@ -17,7 +17,7 @@ const context = (text: string, tools = false) => ({ messages: [{ role: "system",
 async function connect() { configureCli("codex-cli", config); await refreshCli("codex-cli", [], true); return cliModel("codex-cli", "fixture")!; }
 
 test("CLI children retain Keychain home and omit API overrides and desktop capabilities", () => {
-	const env = cliEnvironment({ NODE_ENV: "test", HOME: "/home/test", CLAUDE_CONFIG_DIR: "/claude", CODEX_HOME: "/codex", PATH: "/bin", OPENAI_API_KEY: "secret", ANTHROPIC_API_KEY: "secret", ANTHROPIC_AUTH_TOKEN: "secret", CLAUDE_CODE_OAUTH_TOKEN: "secret", LH_DESKTOP_API_SECRET: "secret", CLAUDECODE: "1" });
+	const env = cliEnvironment({ NODE_ENV: "test", HOME: "/home/test", CLAUDE_CONFIG_DIR: "/claude", CODEX_HOME: "/codex", PATH: "/bin", OPENAI_API_KEY: "secret", ANTHROPIC_API_KEY: "secret", ANTHROPIC_AUTH_TOKEN: "secret", CLAUDE_CODE_OAUTH_TOKEN: "secret", LH_DESKTOP_API_SECRET: "secret", GITHUB_BACKUP_TOKEN: "secret", CLAUDECODE: "1" });
 	assert.equal(env.HOME, "/home/test"); assert.equal(env.CLAUDE_CONFIG_DIR, "/claude"); assert.equal(env.CODEX_HOME, "/codex");
 	assert.ok(!JSON.stringify(env).includes("secret")); assert.equal(env.CLAUDECODE, undefined);
 	assert.throws(() => resolveCliBinary("codex", "codex; echo secret"), /absolute/);

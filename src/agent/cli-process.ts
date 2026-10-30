@@ -5,11 +5,12 @@ import path from "node:path";
 import { createInterface } from "node:readline";
 
 /** T3's CLI route retains HOME for macOS Keychain. API keys cannot silently
- * turn a selected subscription connection into metered API access. */
+ * turn a selected subscription connection into metered API access. The
+ * backup's GitHub token never reaches a lesson's agent (2026-10-30). */
 export function cliEnvironment(base: NodeJS.ProcessEnv = process.env): NodeJS.ProcessEnv {
 	const env = { ...base };
 	for (const key of Object.keys(env)) {
-		if (/^(OPENAI_API_KEY|OPENAI_BASE_URL|ANTHROPIC_API_KEY|ANTHROPIC_AUTH_TOKEN|ANTHROPIC_BASE_URL|CLAUDE_CODE_OAUTH_TOKEN|CLAUDE_CODE_USE_.*|CLAUDECODE|LH_DESKTOP_API_SECRET)$/.test(key)) delete env[key];
+		if (/^(OPENAI_API_KEY|OPENAI_BASE_URL|ANTHROPIC_API_KEY|ANTHROPIC_AUTH_TOKEN|ANTHROPIC_BASE_URL|CLAUDE_CODE_OAUTH_TOKEN|CLAUDE_CODE_USE_.*|CLAUDECODE|LH_DESKTOP_API_SECRET|GITHUB_BACKUP_TOKEN)$/.test(key)) delete env[key];
 	}
 	env.ENABLE_CLAUDEAI_MCP_SERVERS = "false";
 	env.CLAUDE_CODE_AUTO_CONNECT_IDE = "0";
